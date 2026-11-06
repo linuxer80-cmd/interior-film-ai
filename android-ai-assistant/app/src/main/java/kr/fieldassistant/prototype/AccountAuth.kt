@@ -220,16 +220,17 @@ internal class AccountAuth private constructor(context: Context) {
     suspend fun nativeChat(expectedUser:String, company:CompanyAccess, kind:String, target:String="", date:String="", method:String="GET", body:JSONObject?=null, offset:Int=0):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role==company.role }) { "계정 또는 업체가 변경되었습니다." }
-        require(kind in listOf("customers","customer","team") && method in listOf("GET","POST","PATCH"))
+        require(kind in listOf("customers","customer","team","team_summary") && method in listOf("GET","POST","PATCH"))
+        if(kind=="team_summary") require(method=="GET")
         if(method=="PATCH") require(kind=="team")
         require(offset in 0..100000)
-        if(kind!="team") check(company.role=="관리자") { "고객 채팅은 관리자만 이용할 수 있습니다." }
+        if(kind !in listOf("team","team_summary")) check(company.role=="관리자") { "고객 채팅은 관리자만 이용할 수 있습니다." }
         if(kind!="customers") require(Regex("^[0-9a-fA-F-]{36}$").matches(target))
-        if(kind=="team") require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(date))
+        if(kind in listOf("team","team_summary")) require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(date))
         val path=when(kind) {
             "customers" -> "/api/admin/customer-chat?offset=$offset"
             "customer" -> "/api/admin/customer-chat?thread="+Uri.encode(target)
-            else -> "/api/worker/team?siteId="+Uri.encode(target)+"&date="+Uri.encode(date)
+            else -> "/api/worker/team?siteId="+Uri.encode(target)+"&date="+Uri.encode(date)+(if(kind=="team_summary") "&view=summary" else "")
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         if(method=="PATCH") return withContext(Dispatchers.IO) {
@@ -256,7 +257,7 @@ internal class AccountAuth private constructor(context: Context) {
                 val bytes=(if(status in 200..299)c.inputStream else c.errorStream)?.use { SecureTransport.readBounded(it,2*1024*1024) } ?: ByteArray(0)
                 val result=try { JSONObject(bytes.toString(Charsets.UTF_8)) } catch(_:Exception) { JSONObject() }
                 check(status in 200..299) { result.optString("error").ifBlank { "채팅을 처리하지 못했습니다. 다시 확인해 주세요." } }
-                if(kind!="team" && method=="GET") check(result.optString("companyId")==company.id) { "선택한 업체의 채팅이 아닙니다." }
+                if(kind !in listOf("team","team_summary") && method=="GET") check(result.optString("companyId")==company.id) { "선택한 업체의 채팅이 아닙니다." }
                 result
             } finally { c.disconnect() }
         }

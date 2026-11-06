@@ -4,6 +4,7 @@ import { dispatchAndroidChat } from '../../../../lib/androidChatPushDispatch.mjs
 import { privateAuth, privateJson, uuid } from '../../../../lib/workerPrivate';
 import { resolveTeamSite } from '../../../../lib/teamSiteAccess.mjs';
 import { authorizedTeam, includeTeamOwners, teamDate, teamMessage } from '../../../../lib/workerTeam.mjs';
+import { teamInboxSummary } from '../../../../lib/teamInboxSummary.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 async function context(request){
@@ -50,6 +51,9 @@ function failure(e){return privateJson({error:e.status?e.message:['42P01','PGRST
 export async function GET(request){try{
   const a=await context(request);
   if(a.dates)return privateJson({dates:a.dates});
+  if(a.url.searchParams.get('view')==='summary') {
+    return privateJson(await teamInboxSummary(a.db,{companyId:a.site.company_id,siteId:a.site.id,date:a.date,userId:a.user.id}));
+  }
   const users=[...new Set(a.members.map(w=>w.user_id).filter(Boolean))];
   const profiles=users.length?await a.db.from('labor_profiles').select('user_id,name,region,skills,experience_years,introduction,photo_path').in('user_id',users):{data:[]};
   if(profiles.error)throw profiles.error;

@@ -33,9 +33,11 @@ internal class NativeChats(
     private var liveJob:Job?=null
     private var startLive:(()->Unit)?=null
     private var currentDialog:AlertDialog?=null
-    fun pause() { liveJob?.cancel();liveJob=null }
-    fun resume() { startLive?.invoke() }
-    fun close() { pause();startLive=null;currentDialog?.dismiss();currentDialog=null }
+    private var inboxListener:((ChatPushTarget)->Unit)?=null
+    private var refreshInbox:(()->Unit)?=null
+    fun pause() { liveJob?.cancel();liveJob=null;inboxListener?.let { ChatInboxEvents.detach(it) } }
+    fun resume() { inboxListener?.let { ChatInboxEvents.attach(it) };refreshInbox?.invoke();startLive?.invoke() }
+    fun close() { pause();refreshInbox=null;inboxListener=null;startLive=null;currentDialog?.dismiss();currentDialog=null }
     private fun dp(n:Int)=(n*activity.resources.displayMetrics.density).toInt()
     private fun label(s:String,size:Float=15f)=TextView(activity).apply { text=s;textSize=size;setPadding(dp(8),dp(8),dp(8),dp(8)) }
     private fun background(color:Int,radius:Int,border:Int?=null)=GradientDrawable().apply {
@@ -43,43 +45,128 @@ internal class NativeChats(
     }
     private fun toast(s:String)=android.widget.Toast.makeText(activity,s,android.widget.Toast.LENGTH_LONG).show()
 
-    fun customerInbox(offset:Int=0) {
-        if(!valid() || company.role!="관리자") return
-        scope.launch {
-            try {
-                val data=auth.nativeChat(uid,company,"customers",offset=offset)
-                if(!valid()) return@launch
-                val rows=data.getJSONArray("threads")
-                val options=mutableListOf<String>();val ids=mutableListOf<String>();val names=mutableListOf<String>()
-                for(i in 0 until rows.length()) {
-                    val row=rows.optJSONObject(i) ?: continue
-                    val id=row.optString("id");if(!id.matches(Regex("^[0-9a-fA-F-]{36}$"))) continue
-                    val name=row.optString("customer_name").takeUnless { it.isBlank() || it=="null" } ?: "고객"
-                    val incoming=row.optString("last_customer_at").takeUnless { it=="null" }.orEmpty()
-                    val read=row.optString("owner_read_at").takeUnless { it=="null" }.orEmpty()
-                    val unread=incoming.isNotBlank() && (read.isBlank() || incoming>read)
-                    val preview=row.optString("last_preview").takeUnless { it=="null" }.orEmpty().take(60)
-                    ids.add(id);names.add(name);options.add((if(unread) "● " else "")+name+if(preview.isBlank()) "" else "\n"+preview)
-                }
-                val previous=offset>0;val more=data.optBoolean("hasMore")
-                if(previous) options.add("이전 목록")
-                if(more) options.add("다음 목록")
-                if(options.isEmpty()) { toast("아직 고객 채팅이 없습니다.");return@launch }
-                val inbox=AlertDialog.Builder(activity).setTitle("고객 채팅").setItems(options.toTypedArray()) { _,index ->
-                    if(!valid()) return@setItems
-                    when {
-                        index<ids.size -> conversation("customer",ids[index],names[index],"")
-                        previous && index==ids.size -> customerInbox((offset-50).coerceAtLeast(0))
-                        more -> customerInbox(offset+50)
-                    }
-                }.setNegativeButton("닫기",null).create()
-                currentDialog=inbox;inbox.show()
-            } catch(e:CancellationException) { throw e }
-              catch(e:Exception) { if(valid()) toast(e.message ?: "고객 채팅을 불러오지 못했습니다.") }
+    fun customerInbox(offset:Int=0) = chatInbox("customer",offset)
+
+    fun chatInbox(initialKind:String="customer", initialOffset:Int=0) {
+        if(!valid()) return
+        var tab=if(company.role=="관리자" && initialKind=="customer") "customer" else "team"
+        var offset=initialOffset.coerceAtLeast(0);var generation=0;var closed=false
+        var loadJob:Job?=null
+        val handler=Handler(Looper.getMainLooper())
+        val root=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(12),dp(16),dp(12));setBackgroundColor(Color.rgb(249,247,242)) }
+        val tabs=LinearLayout(activity).apply { orientation=LinearLayout.HORIZONTAL }
+        val customerTab=Button(activity).apply { text="고객 채팅";isAllCaps=false }
+        val teamTab=Button(activity).apply { text="오늘 팀 채팅";isAllCaps=false }
+        if(company.role=="관리자") { tabs.addView(customerTab,LinearLayout.LayoutParams(0,dp(52),1f));tabs.addView(teamTab,LinearLayout.LayoutParams(0,dp(52),1f));root.addView(tabs) }
+        val scroll=ScrollView(activity)
+        val rows=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(0,dp(8),0,dp(8)) }
+        scroll.addView(rows);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        val pages=LinearLayout(activity).apply { gravity=Gravity.CENTER;orientation=LinearLayout.HORIZONTAL };root.addView(pages)
+        lateinit var dialog:AlertDialog
+        lateinit var load:()->Unit
+        val header=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;setBackgroundColor(Color.rgb(29,67,50));setPadding(dp(8),dp(4),dp(8),dp(4)) }
+        header.addView(label("‹",30f).apply { gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="채팅 목록 닫기";setOnClickListener { dialog.dismiss() } },LinearLayout.LayoutParams(dp(48),dp(52)))
+        header.addView(label("채팅",19f).apply { setTextColor(Color.WHITE);setTypeface(null,android.graphics.Typeface.BOLD) },LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(label("↻",24f).apply { gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="채팅 목록 새로고침";setOnClickListener { load() } },LinearLayout.LayoutParams(dp(48),dp(52)))
+        dialog=AlertDialog.Builder(activity).setCustomTitle(header).setView(root).create()
+        fun displayTime(raw:String):String = try {
+            java.time.OffsetDateTime.parse(raw).atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).format(java.time.format.DateTimeFormatter.ofPattern("M월 d일 HH:mm"))
+        } catch(_:Exception) { "" }
+        fun card(title:String,preview:String,extra:String,onClick:()->Unit):LinearLayout {
+            val box=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(14));background=background(Color.WHITE,16,Color.rgb(225,229,220));isClickable=true;isFocusable=true;setOnClickListener { if(valid()) onClick() } }
+            box.addView(label(title,16f).apply { setPadding(0,0,0,dp(6));setTextColor(Color.rgb(29,67,50));setTypeface(null,android.graphics.Typeface.BOLD);maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END })
+            box.addView(label(preview,14f).apply { setPadding(0,0,0,dp(5));setTextColor(Color.rgb(66,76,69));maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END })
+            box.addView(label(extra,12f).apply { setPadding(0,0,0,0);setTextColor(Color.rgb(92,115,99)) })
+            return box
         }
+        fun addCard(view:LinearLayout) { rows.addView(view,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(10)) }) }
+        fun open(kind:String,id:String,name:String,date:String) {
+            val returnTab=tab;val returnOffset=offset
+            dialog.dismiss();conversation(kind,id,name,date) { if(valid()) chatInbox(returnTab,returnOffset) }
+        }
+        fun pageButtons(more:Boolean,step:Int) {
+            pages.removeAllViews()
+            if(offset>0) pages.addView(Button(activity).apply { text="이전";setOnClickListener { offset=(offset-step).coerceAtLeast(0);load() } })
+            if(more) pages.addView(Button(activity).apply { text="다음";setOnClickListener { offset+=step;load() } })
+        }
+        load=load@{
+            if(closed || !dialog.isShowing || !valid()) return@load
+            loadJob?.cancel();generation++;val request=generation;val currentTab=tab;val currentOffset=offset;val date=ScheduleDates.today()
+            customerTab.isEnabled=currentTab!="customer";teamTab.isEnabled=currentTab!="team"
+            rows.removeAllViews();pages.removeAllViews();rows.addView(label("대화를 불러오는 중입니다…"));scroll.scrollTo(0,0)
+            loadJob=scope.launch {
+                try {
+                    if(currentTab=="customer") {
+                        val data=auth.nativeChat(uid,company,"customers",offset=currentOffset)
+                        if(closed || !dialog.isShowing || !valid() || generation!=request) return@launch
+                        rows.removeAllViews();val list=data.getJSONArray("threads")
+                        for(i in 0 until list.length()) {
+                            val row=list.optJSONObject(i) ?: continue
+                            val id=row.optString("id");if(!id.matches(Regex("^[0-9a-fA-F-]{36}$"))) continue
+                            val name=row.optString("customer_name").takeUnless { it.isBlank() || it=="null" } ?: "고객"
+                            val incoming=row.optString("last_customer_at").takeUnless { it=="null" }.orEmpty()
+                            val read=row.optString("owner_read_at").takeUnless { it=="null" }.orEmpty()
+                            val unread=incoming.isNotBlank() && (read.isBlank() || incoming>read)
+                            val preview=row.optString("last_preview").takeUnless { it.isBlank() || it=="null" } ?: "아직 메시지가 없습니다."
+                            val extra=listOfNotNull(if(unread) "● 새 메시지" else null,displayTime(row.optString("updated_at")).takeIf { it.isNotBlank() }).joinToString("  ·  ")
+                            addCard(card(name,preview,extra) { open("customer",id,name,"") })
+                        }
+                        if(rows.childCount==0) rows.addView(label("고객 채팅이 없습니다."))
+                        pageButtons(data.optBoolean("hasMore"),50)
+                    } else {
+                        val sites=DailyAssistant.briefing(auth.assistantSites(uid,company.id,dailyOnly=true),company.id,company.role=="관리자",date).sites
+                        if(closed || !dialog.isShowing || !valid() || generation!=request || date!=ScheduleDates.today()) return@launch
+                        rows.removeAllViews();val page=sites.drop(currentOffset).take(10)
+                        if(page.isEmpty()) rows.addView(label("오늘 예정된 현장의 팀 채팅이 없습니다."))
+                        pageButtons(currentOffset+10<sites.size,10)
+                        val limiter=kotlinx.coroutines.sync.Semaphore(3)
+                        kotlinx.coroutines.coroutineScope {
+                            page.forEach { site ->
+                                val placeholder=card(site.name,"대화를 확인하는 중입니다…",site.address) { open("team",site.id,site.name,date) }
+                                addCard(placeholder)
+                                launch {
+                                    limiter.acquire()
+                                    try {
+                                        val data=auth.nativeChat(uid,company,"team_summary",target=site.id,date=date)
+                                        if(closed || !dialog.isShowing || !valid() || generation!=request || date!=ScheduleDates.today()) return@launch
+                                        check(data.has("lastMessage") && data.has("unreadCount")) { "팀 채팅 목록을 확인할 수 없습니다." }
+                                        val preview=data.optString("lastMessage").takeUnless { it.isBlank() || it=="null" } ?: "아직 메시지가 없습니다."
+                                        val count=if(data.isNull("unreadCount")) null else data.optInt("unreadCount")
+                                        val badge=when {
+                                            !data.optBoolean("readReady") -> "읽음 상태 확인 필요"
+                                            data.optBoolean("unreadHasOlder") -> "최근 100개 중 안 읽은 메시지 ${count ?: 0}개 · 이전 대화 확인"
+                                            count!=null && count>0 -> "● 안 읽은 메시지 ${count}개"
+                                            else -> null
+                                        }
+                                        val extra=listOfNotNull(badge,displayTime(data.optString("lastAt")).takeIf { it.isNotBlank() },site.address.takeIf { it.isNotBlank() }).joinToString("  ·  ")
+                                        (placeholder.getChildAt(1) as TextView).text=preview
+                                        (placeholder.getChildAt(2) as TextView).text=extra
+                                    } catch(e:CancellationException) { throw e }
+                                      catch(_:Exception) { if(!closed && dialog.isShowing && valid() && generation==request) (placeholder.getChildAt(1) as TextView).text="대화를 확인하지 못했습니다. 눌러서 다시 확인해 주세요." }
+                                    finally { limiter.release() }
+                                }
+                            }
+                        }
+                    }
+                } catch(e:CancellationException) { throw e }
+                  catch(_:Exception) { if(!closed && dialog.isShowing && valid() && generation==request) { rows.removeAllViews();rows.addView(label("채팅 목록을 불러오지 못했습니다."));rows.addView(Button(activity).apply { text="다시 시도";setOnClickListener { load() } }) } }
+            }
+        }
+        customerTab.setOnClickListener { if(tab!="customer") { tab="customer";offset=0;load() } }
+        teamTab.setOnClickListener { if(tab!="team") { tab="team";offset=0;load() } }
+        val refresh=Runnable { load() }
+        val listener:(ChatPushTarget)->Unit = { target ->
+            if(!closed && valid() && target.user==uid && target.company==company.id && target.kind==tab && (tab!="team" || target.date==ScheduleDates.today())) {
+                handler.removeCallbacks(refresh);handler.postDelayed(refresh,700)
+            }
+        }
+        inboxListener=listener;refreshInbox=load;currentDialog=dialog
+        dialog.setOnDismissListener { closed=true;loadJob?.cancel();handler.removeCallbacks(refresh);ChatInboxEvents.detach(listener);if(inboxListener===listener) { inboxListener=null;refreshInbox=null };if(currentDialog===dialog) currentDialog=null }
+        dialog.setOnShowListener { dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.9).toInt());ChatInboxEvents.attach(listener);load() }
+        dialog.show()
     }
 
-    fun conversation(kind:String,target:String,title:String,date:String) {
+    fun conversation(kind:String,target:String,title:String,date:String,onReturn:(()->Unit)?=null) {
         if(!valid() || kind !in listOf("customer","team")) return
         val root=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8));setBackgroundColor(Color.rgb(249,247,242)) }
         val status=label(if(kind=="team") "$date · 이 현장에 배정된 팀원과 관리자" else "고객과의 대화",13f).apply { setTextColor(Color.rgb(89,111,96)) }
@@ -93,7 +180,7 @@ internal class NativeChats(
         lateinit var dialog:AlertDialog
         lateinit var refresh:()->Unit
         val header=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),dp(6),dp(4),dp(6));setBackgroundColor(Color.rgb(29,67,50)) }
-        val back=label("‹",30f).apply { gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="채팅 닫기";setOnClickListener { dialog.dismiss() } }
+        val back=label("‹",30f).apply { gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="채팅 닫기";setOnClickListener { dialog.dismiss();if(valid()) onReturn?.invoke() } }
         header.addView(back,LinearLayout.LayoutParams(dp(48),dp(52)))
         val heading=label(if(kind=="team") "$title · 팀 채팅" else "$title · 고객 채팅",18f).apply {
             setTextColor(Color.WHITE);setTypeface(null,android.graphics.Typeface.BOLD);maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END
@@ -238,6 +325,7 @@ internal class NativeChats(
             }
         }
         dialog.setOnDismissListener { closed=true;pause();startLive=null;handler.removeCallbacks(markVisible);if(currentDialog===dialog) currentDialog=null }
+        dialog.setOnCancelListener { handler.post { if(valid()) onReturn?.invoke() } }
         dialog.setOnShowListener {
             dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.9).toInt())
             dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)

@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.google.firebase.messaging.FirebaseMessaging
@@ -43,11 +45,20 @@ internal data class ChatPushTarget(val kind:String,val user:String,val company:S
     }
 }
 
+/** Process-local signal only; list contents are always reloaded through authorized APIs. */
+internal object ChatInboxEvents {
+    @Volatile private var listener:((ChatPushTarget)->Unit)?=null
+    fun attach(callback:(ChatPushTarget)->Unit) { listener=callback }
+    fun detach(callback:(ChatPushTarget)->Unit) { if(listener===callback) listener=null }
+    fun emit(target:ChatPushTarget) { Handler(Looper.getMainLooper()).post { listener?.invoke(target) } }
+}
+
 class ChatPushService:FirebaseMessagingService() {
     override fun onNewToken(token:String) { ChatPushRegistration.enqueue(applicationContext) }
     override fun onMessageReceived(message:RemoteMessage) {
         val target=ChatPushTarget.parse(message.data) ?: return
         if(ChatPushRegistration.activeUser(applicationContext)!=target.user) return
+        ChatInboxEvents.emit(target)
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         val manager=getSystemService(NotificationManager::class.java) ?: return
         val channel="chat_messages"

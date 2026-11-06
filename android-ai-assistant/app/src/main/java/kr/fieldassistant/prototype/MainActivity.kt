@@ -1051,18 +1051,7 @@ class MainActivity : Activity() {
     private fun openTodayTeamChats() {
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
-        val date=ScheduleDates.today();val epoch=sessionEpoch
-        scope.launch {
-            try {
-                val sites=DailyAssistant.briefing(auth.assistantSites(uid,company.id,dailyOnly=true),company.id,company.role=="관리자",date).sites
-                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company) || date!=ScheduleDates.today()) return@launch
-                if(sites.isEmpty()) { message("오늘 확인된 현장 일정이 없습니다.");return@launch }
-                AlertDialog.Builder(this@MainActivity).setTitle("오늘 현장 팀 채팅").setItems(sites.map { it.name }.toTypedArray()) { _,index ->
-                    if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,sites[index].id,"team_chat")
-                }.setNegativeButton("닫기",null).show()
-            } catch(e:CancellationException) { throw e }
-              catch(_:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message("오늘 현장을 확인하지 못했습니다.") }
-        }
+        nativeChats(uid,company).chatInbox("team")
     }
     private fun showNativeTeamChat(uid:String,company:CompanyAccess,siteId:String,siteName:String,date:String) {
         if(sitePhotoSessionValid(uid,company)) nativeChats(uid,company).conversation("team",siteId,siteName,date)
