@@ -2166,12 +2166,12 @@ class MainActivity : Activity() {
         chatId=id;settingsOpen=false;render();editChatDraft(id)
     }
     private fun openSiteAction(companyId:String, siteId:String, action:String,photoType:String="all") {
-        if(action !in listOf("phone","navigate","gallery","materials","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web","wrap_up","team_chat") || siteId.isBlank()) return
+        if(action !in listOf("phone","navigate","gallery","materials","add_material","film","report","report_web","expenses","photos","info","all","quote","schedule","schedule_web","wrap_up","team_chat") || siteId.isBlank()) return
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
         if(company.id!=companyId) { message("이 현장을 조회한 업체로 변경해 주세요.");return }
         val owner=company.role=="관리자"
-        if(!owner && action in listOf("quote","schedule","schedule_web")) return
+        if(!owner && action in listOf("quote","schedule","schedule_web","add_material")) return
         if(workerActionBusy) return
         workerActionBusy=true
         val epoch=sessionEpoch
@@ -2183,6 +2183,11 @@ class MainActivity : Activity() {
                     .find { it.optString("id").ifBlank { it.optString("site_id") }==siteId }
                 if(site==null) { message("현재 접근할 수 없는 현장입니다. 목록을 다시 조회해 주세요.");return@launch }
                 when(action) {
+                    "add_material" -> {
+                        if(!owner) { message("관리자만 현장 자재를 등록할 수 있습니다.");return@launch }
+                        val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장"
+                        NativePlannedMaterial(this@MainActivity,auth,scope,uid,company,siteId,name) { sitePhotoSessionValid(uid,company) }.open()
+                    }
                     "team_chat" -> showNativeTeamChat(uid,company,siteId,site.optString("site_name").ifBlank { "현장" },ScheduleDates.today())
                     "wrap_up" -> {
                         if(owner) { message("마무리 점검은 배정된 시공자 화면에서 확인할 수 있습니다.");return@launch }

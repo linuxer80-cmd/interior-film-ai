@@ -66,7 +66,7 @@ internal object AssistantResultViews {
                 actions.add("오늘 현장 팀 채팅" to "team_chat")
                 if(workerActions || ownerActions) actions.addAll(listOf("자재 준비 현황" to "materials","필름 사용량 · 자재" to "film","경비 입력" to "expenses",(if(ownerActions) "완료보고 확인 · 승인" else "완료보고 확인 · 작성") to "report"))
                 if(workerActions) actions.add("현장 업무 전체 (웹앱)" to "all")
-                if(ownerActions) actions.addAll(listOf("현장 기본정보 수정" to "info","전체 업무 (웹)" to "all","상담 견적서 작성" to "quote","일정 · 시공자 배정" to "schedule"))
+                if(ownerActions) actions.addAll(listOf("현장 자재 등록" to "add_material","현장 기본정보 수정" to "info","전체 업무 (웹)" to "all","상담 견적서 작성" to "quote","일정 · 시공자 배정" to "schedule"))
                 actions.forEach { (title,section) ->
                     card.addView(Button(context).apply {
                         text=title;textSize=15f;isAllCaps=false;minHeight=dp(48)
