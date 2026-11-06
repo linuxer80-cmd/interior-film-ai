@@ -2236,7 +2236,9 @@ class MainActivity : Activity() {
                     }
                     "report" -> {
                         if(owner) {
-                            openWebWorkspace("https://interior-film-ai.vercel.app/worker/site/"+Uri.encode(siteId)+"?section=report")
+                            val report=auth.assistantAdminReview(uid,companyId,siteId)
+                            if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
+                            showNativeAdminReview(uid,company,siteId,site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장",report)
                         } else {
                             val report=auth.assistantWorkReport(uid,companyId,siteId)
                             if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
@@ -2416,6 +2418,79 @@ class MainActivity : Activity() {
             finally { workerActionBusy=false }
         }
     }
+    private fun showNativeAdminReview(uid:String,company:CompanyAccess,siteId:String,siteName:String,data:JSONObject) {
+        if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
+        val report=data.optJSONObject("report")
+        if(!data.optBoolean("hasReport") || report==null) { AlertDialog.Builder(this).setTitle("완료보고 확인").setMessage("아직 제출된 완료보고가 없습니다.").setPositiveButton("닫기",null).show();return }
+        val materials=data.optJSONArray("materials") ?: run { message("자재 내역을 확인하지 못했습니다.");return }
+        val expenses=data.optJSONArray("expenses") ?: run { message("경비 내역을 확인하지 못했습니다.");return }
+        val before=data.optJSONArray("beforePhotos") ?: run { message("사진 내역을 확인하지 못했습니다.");return }
+        val after=data.optJSONArray("afterPhotos") ?: run { message("사진 내역을 확인하지 못했습니다.");return }
+        if(materials.length()>100 || expenses.length()>100) { message("내역이 많아 기존 보고서 화면에서 확인해 주세요.");return }
+        fun field(row:JSONObject,key:String)=row.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미입력"
+        val status=data.optJSONObject("review")?.optString("status").orEmpty()
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(10),dp(18),dp(14)) }
+        val details=buildString {
+            append("현장: $siteName\n상태: "+when(status) { "pending"->"검수 대기";"approved"->"승인 완료";"rejected"->"보완 요청";else->"확인 필요" })
+            append("\n시공자: "+(data.optJSONObject("worker")?.optString("name")?.takeUnless { it.isBlank() || it=="null" } ?: "확인 필요"))
+            append("\n시공 부위: "+field(report,"work_region")+"\n시공 내용: "+field(report,"work_summary")+"\n메모: "+field(report,"memo"))
+            val reviewMemo=data.optJSONObject("review")?.optString("memo").orEmpty();if(reviewMemo.isNotBlank() && reviewMemo!="null") append("\n관리자 의견: "+reviewMemo)
+            append("\n\n시공 전 사진 ${before.length()}장 · 완료 사진 ${after.length()}장")
+            append("\n\n실제 자재 ${materials.length()}건")
+            for(i in 0 until materials.length()) { val row=materials.optJSONObject(i) ?: continue;append("\n"+field(row,"brand")+" "+field(row,"product_code")+" · "+field(row,"quantity")+field(row,"unit")+" · 단가 "+field(row,"unit_price")+"원 · 합계 "+field(row,"total_price")+"원") }
+            append("\n\n등록된 경비 ${expenses.length()}건")
+            for(i in 0 until expenses.length()) { val row=expenses.optJSONObject(i) ?: continue;append("\n"+field(row,"expense_type")+" · "+field(row,"amount")+"원 · "+field(row,"description")) }
+        }
+        content.addView(text(details,14f))
+        val dialog=AlertDialog.Builder(this).setTitle("완료보고 검토").setView(ScrollView(this).apply { addView(content) }).setPositiveButton("닫기",null).create()
+        fun action(label:String,run:()->Unit) { addButton(content,label,false) { if(!sitePhotoSessionValid(uid,company)) { message("계정과 업체를 다시 확인해 주세요.");return@addButton };dialog.dismiss();run() } }
+        action("시공 전·완료 사진 보기") { requestSitePhotoPage(uid,company,siteId,siteName,"all",0) }
+        if(status=="pending" && AdminReportSnapshot.key(data)!=null) {
+            action("검수 승인") { showAdminReviewInput(uid,company,siteId,siteName,data,"approve") }
+            action("보완 요청") { showAdminReviewInput(uid,company,siteId,siteName,data,"reject") }
+        } else if(status=="pending") content.addView(text("보고서 상태를 확인하지 못했습니다. 다시 열어 주세요.",13f))
+        dialog.show()
+    }
+    private fun showAdminReviewInput(uid:String,company:CompanyAccess,siteId:String,siteName:String,data:JSONObject,action:String) {
+        if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
+        val snapshot=AdminReportSnapshot.key(data) ?: run { message("보고서를 다시 확인해 주세요.");return }
+        val report=data.optJSONObject("report") ?: return
+        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
+        val amount=EditText(this).apply { hint="실제 시공금액 (원)";inputType=InputType.TYPE_CLASS_NUMBER;filters=arrayOf(android.text.InputFilter.LengthFilter(13)) }
+        val memo=EditText(this).apply { hint=if(action=="reject") "보완 요청 사유 (필수)" else "관리자 메모 (선택)";minLines=2;filters=arrayOf(android.text.InputFilter.LengthFilter(2000)) }
+        if(action=="approve") box.addView(amount);box.addView(memo)
+        val input=AlertDialog.Builder(this).setTitle(if(action=="approve") "검수 승인" else "보완 요청")
+            .setView(box).setNegativeButton("취소",null).setPositiveButton("내용 확인",null).create()
+        input.setOnShowListener { input.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val raw=amount.text.toString().trim();val value=raw.toLongOrNull();val reason=memo.text.toString().trim()
+            if(action=="approve" && (value==null || value !in 0..1000000000000L)) { amount.error="실제 시공금액을 입력해 주세요.";return@setOnClickListener }
+            if(action=="reject" && reason.isBlank()) { memo.error="보완 요청 사유를 입력해 주세요.";return@setOnClickListener }
+            input.dismiss()
+            val confirmation=if(action=="approve") "$siteName\n실제 시공금액 ${String.format(Locale.KOREA,"%,d",value)}원으로 승인할까요?\n고객 완료 알림 설정이 되어 있으면 알림톡이 발송될 수 있습니다." else "$siteName\n보완 요청: $reason\n\n시공자가 수정해 다시 제출할 수 있습니다."
+            AlertDialog.Builder(this).setTitle(if(action=="approve") "승인 내용 확인" else "보완 내용 확인").setMessage(confirmation)
+                .setNegativeButton("취소",null).setPositiveButton(if(action=="approve") "승인하기" else "보완 요청하기") { _,_ ->
+                    if(!sitePhotoSessionValid(uid,company) || workerActionBusy) { message("계정 또는 진행 중인 작업을 확인해 주세요.");return@setPositiveButton }
+                    workerActionBusy=true;val epoch=sessionEpoch
+                    scope.launch {
+                        var started=false
+                        try {
+                            val latest=auth.assistantAdminReview(uid,company.id,siteId)
+                            if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                            check(AdminReportSnapshot.key(latest)==snapshot) { "검토 중 보고서·사진·자재·경비가 변경되었습니다. 다시 확인해 주세요." }
+                            val body=JSONObject().put("siteId",siteId).put("action",action).put("reviewMemo",reason)
+                                .put("expectedReportId",report.optString("id")).put("expectedUpdatedAt",report.optString("updated_at"))
+                            if(action=="approve") body.put("approvedAmount",value)
+                            started=true
+                            val saved=auth.assistantAdminReview(uid,company.id,siteId,body)
+                            if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(saved.optString("message").ifBlank { "검수 결과를 저장했습니다." })
+                        } catch(e:CancellationException) { throw e }
+                          catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(if(started && (e !is TradeApiFailure || e.status==408 || e.status>=500)) "처리 결과를 확인하지 못했습니다. 다시 누르기 전에 보고서 상태를 확인해 주세요." else e.message ?: "검수 결과를 확인하지 못했습니다.") }
+                        finally { workerActionBusy=false }
+                    }
+                }.show()
+        } }
+        input.show()
+    }
     private fun showNativeReportStatus(uid:String,company:CompanyAccess,siteId:String,siteName:String,result:JSONObject) {
         val report=result.optJSONObject("report")
         val prefix="report_draft_"+company.id+"_"+siteId+"_"
@@ -2434,7 +2509,7 @@ class MainActivity : Activity() {
                 if(value("memo").isNotBlank()) append("\n메모: "+value("memo"))
                 if(value("review_memo").isNotBlank()) append("\n관리자 의견: "+value("review_memo"))
             }
-            append(if(result.optBoolean("canSubmit")) "\n\n지정 자재가 있는 신규 보고서는 앱에서 제출 준비를 할 수 있습니다. 기존 보고서 보완이나 수동 자재 입력은 웹 화면을 이용해 주세요." else "\n\n완료보고 제출 권한을 확인해 주세요.")
+            append(if(result.optBoolean("canSubmit")) "\n\n신규 보고서와 반려 보고서의 내용·사진 보완을 앱에서 진행할 수 있습니다. 필름 내역이 달라졌다면 기존 보고서 화면에서 자재를 확인해 주세요." else "\n\n완료보고 제출 권한을 확인해 주세요.")
         }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 상태").setMessage(content).setPositiveButton("닫기",null)
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) {
@@ -2447,7 +2522,10 @@ class MainActivity : Activity() {
             actions.addView(photo)
             actions.addView(Button(this).apply { text="보고 준비 상태 확인";setOnClickListener { checkNativeReportPreparation(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="등록된 내 경비 확인";setOnClickListener { showNativeReportExpenses(uid,company,siteId) } })
-            if(value("review_status")=="rejected") actions.addView(Button(this).apply { text="반려 보고서의 기존 내역 확인";setOnClickListener { showRejectedReportDetails(uid,company,siteId) } })
+            if(value("review_status")=="rejected") {
+                actions.addView(Button(this).apply { text="반려 보고서의 기존 내역 확인";setOnClickListener { showRejectedReportDetails(uid,company,siteId) } })
+                actions.addView(Button(this).apply { text="반려 내용 보완 · 재제출";setOnClickListener { prepareRejectedResubmission(uid,company,siteId,siteName) } })
+            }
             actions.addView(Button(this).apply { text="인건비 임시 입력";setOnClickListener { prepareNativeLaborDraft(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="완료보고 제출 준비";setOnClickListener { prepareNativeReportSubmit(uid,company,siteId,siteName) } })
             dialog.setView(actions)
@@ -2490,11 +2568,82 @@ class MainActivity : Activity() {
                     for(i in 0 until expenses.length()) { val row=expenses.optJSONObject(i) ?: error("기존 경비를 확인하지 못했습니다.");append("\n"+field(row,"expense_date")+" · "+field(row,"expense_type")+" · "+field(row,"amount")+"원 · "+field(row,"description")) }
                     append("\n\n보고서 인건비 ${labor.length()}건")
                     for(i in 0 until labor.length()) { val row=labor.optJSONObject(i) ?: error("기존 인건비를 확인하지 못했습니다.");val id=field(row,"worker_id");val name=names[id]?.takeUnless { it.isBlank() || it=="null" } ?: "시공자 확인 필요 ("+id.takeLast(4)+")";append("\n"+name+" · "+field(row,"days")+"일 · 일당 "+field(row,"daily_wage")+"원 · 수당 "+field(row,"allowance")+"원") }
-                    append("\n\n별도로 등록한 현장 경비는 ‘등록된 내 경비 확인’에서 확인해 주세요. 재제출은 현재 웹앱에서 할 수 있습니다.")
+                    append("\n\n별도로 등록한 현장 경비는 ‘등록된 내 경비 확인’에서 확인해 주세요. 내용·사진 보완 재제출은 앱에서 할 수 있습니다.")
                 }
                 AlertDialog.Builder(this@MainActivity).setTitle("반려 보고서 기존 내역").setMessage(details).setPositiveButton("닫기",null).show()
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "기존 보고서 내역을 확인하지 못했습니다.") }
+            finally { workerActionBusy=false }
+        }
+    }
+    private fun prepareRejectedResubmission(uid:String,company:CompanyAccess,siteId:String,siteName:String) {
+        if(workerActionBusy || !sitePhotoSessionValid(uid,company)) { message("계정이나 진행 중인 작업을 확인해 주세요.");return }
+        val prefix="report_draft_"+company.id+"_"+siteId+"_"
+        if(prefs.getBoolean(prefix+"submission_uncertain",false)) { message("이전 제출 결과를 먼저 확인해 주세요.");return }
+        workerActionBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val access=auth.assistantWorkReport(uid,company.id,siteId);val support=auth.assistantReportSupport(uid,company.id,siteId)
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                check(RejectedReportSnapshot.matches(access,support)) { "반려 보고서나 제출 권한이 변경되었습니다. 다시 확인해 주세요." }
+                check(support.optInt("afterCount",0)>0) { "시공 완료 사진을 먼저 등록해 주세요." }
+                val report=access.getJSONObject("report");val seed=support.optJSONObject("seed") ?: error("기존 내역을 확인하지 못했습니다.")
+                val materials=seed.optJSONArray("materials") ?: error("기존 자재 내역을 확인하지 못했습니다.")
+                val expenses=seed.optJSONArray("expenses") ?: error("기존 경비 내역을 확인하지 못했습니다.")
+                val labor=seed.optJSONArray("labor") ?: error("기존 인건비를 확인하지 못했습니다.")
+                if(materials.length()>100 || expenses.length()>100 || labor.length()>100) error("내역이 많아 기존 보고서 화면에서 확인해 주세요.")
+                workerActionBusy=false
+                val form=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
+                val hint=buildString {
+                    append("현장: $siteName\n관리자 보완 사유: "+report.optString("review_memo").takeUnless { it.isBlank() || it=="null" }.orEmpty())
+                    append("\n완료사진 ${support.optInt("afterCount")}장 · 기존 자재 ${materials.length()}건 · 보고서 경비 ${expenses.length()}건 · 인건비 ${labor.length()}건")
+                    append("\n\n기존 자재·경비·인건비는 그대로 보존합니다. 필름 반출·반납 내용이 달라진 경우 기존 보고서 화면에서 자재를 확인해야 합니다.")
+                }
+                form.addView(text(hint,14f))
+                val fields=listOf("work_region","work_summary","memo");val titles=listOf("시공 부위","실제 시공 내용","메모")
+                val inputs=fields.mapIndexed { i,key -> EditText(this@MainActivity).apply {
+                    hint=titles[i];minLines=if(i==1)3 else 1;filters=arrayOf(android.text.InputFilter.LengthFilter(5000))
+                    setText(report.optString(key).takeUnless { it=="null" }.orEmpty());form.addView(this)
+                } }
+                val input=AlertDialog.Builder(this@MainActivity).setTitle("반려 보고서 보완").setView(ScrollView(this@MainActivity).apply { addView(form) })
+                    .setNegativeButton("취소",null).setPositiveButton("내용 확인",null).create()
+                input.setOnShowListener { input.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val region=inputs[0].text.toString().trim();val summary=inputs[1].text.toString().trim();val memo=inputs[2].text.toString().trim()
+                    if(summary.isBlank()) { inputs[1].error="시공 내용을 입력해 주세요.";return@setOnClickListener }
+                    input.dismiss()
+                    val confirmation="$siteName\n시공 부위: "+region.ifBlank { "미입력" }+"\n시공 내용: "+summary+"\n메모: "+memo.ifBlank { "미입력" }+
+                        "\n\n기존 자재·경비·인건비를 보존하고 관리자에게 다시 제출할까요?"
+                    AlertDialog.Builder(this@MainActivity).setTitle("재제출 내용 확인").setMessage(confirmation).setNegativeButton("돌아가기",null)
+                        .setPositiveButton("재제출") { _,_ ->
+                            if(workerActionBusy || !sitePhotoSessionValid(uid,company)) { message("계정이나 진행 중인 작업을 확인해 주세요.");return@setPositiveButton }
+                            workerActionBusy=true
+                            scope.launch {
+                                var started=false
+                                try {
+                                    val latest=auth.assistantWorkReport(uid,company.id,siteId);val supportLatest=auth.assistantReportSupport(uid,company.id,siteId)
+                                    if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                                    check(RejectedReportSnapshot.matches(latest,supportLatest) && latest.optJSONObject("report")?.optString("id")==report.optString("id") &&
+                                        latest.optJSONObject("report")?.optString("updated_at")==report.optString("updated_at") && supportLatest.optInt("afterCount",-1)==support.optInt("afterCount",-2) &&
+                                        supportLatest.optJSONObject("seed")?.toString()==seed.toString()) { "보고서·사진 또는 비용 내역이 변경되었습니다. 다시 확인해 주세요." }
+                                    check(prefs.edit().putBoolean(prefix+"submission_uncertain",true).commit()) { "제출 상태를 저장하지 못했습니다." }
+                                    started=true
+                                    val saved=auth.resubmitAssistantWorkerReport(uid,company.id,siteId,report.optString("id"),report.optString("updated_at"),region,summary,memo)
+                                    if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) {
+                                        prefs.edit().remove(prefix+"submission_uncertain").apply()
+                                        message(saved.optString("message").ifBlank { "완료보고를 재제출했습니다." })
+                                    }
+                                } catch(e:CancellationException) { throw e }
+                                  catch(e:Exception) {
+                                    if(e is TradeApiFailure && e.status in 400..499 && e.status!=408) prefs.edit().remove(prefix+"submission_uncertain").apply()
+                                    if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(if(started && prefs.getBoolean(prefix+"submission_uncertain",false)) "재제출 결과를 확인하지 못했습니다. 다시 제출하기 전에 보고서 상태를 확인해 주세요." else e.message ?: "재제출 내용을 확인하지 못했습니다.")
+                                  }
+                                finally { workerActionBusy=false }
+                            }
+                        }.show()
+                } }
+                input.show()
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "반려 보고서를 확인하지 못했습니다.") }
             finally { workerActionBusy=false }
         }
     }

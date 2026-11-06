@@ -786,6 +786,28 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun resubmitAssistantWorkerReport(expectedUser:String,companyId:String,siteId:String,reportId:String,updatedAt:String,region:String,summary:String,memo:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
+        val uuid=Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+        require(uuid.matches(siteId) && uuid.matches(reportId) && updatedAt.isNotBlank() && summary.isNotBlank())
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/worker/site-work-report/resubmit")
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=90000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json; charset=utf-8")
+                val body=JSONObject().put("siteId",siteId).put("reportId",reportId).put("updatedAt",updatedAt)
+                    .put("region",region).put("summary",summary).put("memo",memo)
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val status=c.responseCode;val stream=if(status in 200..299)c.inputStream else c.errorStream
+                val response=try { JSONObject(stream?.use { SecureTransport.readBounded(it,128*1024) }?.toString(Charsets.UTF_8).orEmpty()) } catch(_:Exception) { JSONObject() }
+                if(status !in 200..299) throw TradeApiFailure(status,response.optString("error").ifBlank { "재제출 결과를 확인하지 못했습니다." })
+                check(response.optBoolean("success") && response.optString("reportId")==reportId && response.optString("review_status")=="pending") { "재제출 결과를 확인하지 못했습니다. 보고서 상태를 다시 확인해 주세요." }
+                response
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantReportExpenses(expectedUser:String,companyId:String,siteId:String):JSONArray {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
@@ -847,6 +869,31 @@ internal class AccountAuth private constructor(context: Context) {
                 val result=try { JSONObject(raw) } catch(_:Exception) { JSONObject() }
                 if(code in 400..499 && code!=408) error(result.optString("error").ifBlank { "사진 등록 권한과 현장을 확인해 주세요." })
                 check(code in 200..299 && result.optBoolean("success") && result.optString("site_id")==siteId && result.optInt("count")==1) { "사진 등록 결과를 확인하지 못했습니다. 다시 올리기 전에 기존 사진을 확인해 주세요." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
+    suspend fun assistantAdminReview(expectedUser:String,companyId:String,siteId:String,body:JSONObject?=null):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
+        val uuid=Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+        require(uuid.matches(companyId) && uuid.matches(siteId))
+        if(body!=null) require(body.optString("siteId")==siteId && body.optString("action") in listOf("approve","reject") && uuid.matches(body.optString("expectedReportId")) && body.optString("expectedUpdatedAt").isNotBlank())
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val base="https://interior-film-ai.vercel.app/api/admin/site-work-report-review"
+            val c=SecureTransport.open(base+(if(body==null) "?siteId="+siteId else "/action"))
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=90000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(body!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) } }
+                val status=c.responseCode;val stream=if(status in 200..299)c.inputStream else c.errorStream
+                val result=try { JSONObject(stream?.use { SecureTransport.readBounded(it,1024*1024) }?.toString(Charsets.UTF_8).orEmpty()) } catch(_:Exception) { JSONObject() }
+                if(status !in 200..299 || !result.optBoolean("success")) throw TradeApiFailure(status,result.optString("error").ifBlank { "완료보고를 확인하지 못했습니다." })
+                if(body==null) {
+                    check(result.optJSONObject("site")?.let { it.optString("id")==siteId && it.optString("company_id")==companyId }==true) { "현장 정보를 확인하지 못했습니다." }
+                    if(result.optBoolean("hasReport")) check(result.optJSONObject("report")?.let { it.optString("site_id")==siteId && it.optString("company_id")==companyId }==true) { "보고서 정보를 확인하지 못했습니다." }
+                } else check(result.optJSONObject("report")?.let { it.optString("site_id")==siteId && it.optString("id")==body.optString("expectedReportId") && it.optString("review_status")==(if(body.optString("action")=="approve") "approved" else "rejected") }==true) { "처리 결과를 확인하지 못했습니다. 보고서 상태를 다시 확인해 주세요." }
                 result
             } finally { c.disconnect() }
         }

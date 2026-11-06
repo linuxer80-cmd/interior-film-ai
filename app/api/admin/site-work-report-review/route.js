@@ -142,6 +142,10 @@ async function verifyAdmin(
     };
   }
 
+  if (profile.role !== "owner") {
+    return { ok:false,status:403,error:"완료보고 검수는 업체 관리자만 할 수 있습니다." };
+  }
+
   if (profile.is_active === false) {
     return {
       ok: false,
@@ -159,6 +163,10 @@ async function verifyAdmin(
         "관리자 계정에 업체가 연결되어 있지 않습니다.",
     };
   }
+
+  const company=await supabase.from("companies").select("id,is_active").eq("id",profile.company_id).maybeSingle();
+  if(company.error) return {ok:false,status:500,error:"업체 상태를 확인하지 못했습니다."};
+  if(!company.data || company.data.is_active!==true) return {ok:false,status:403,error:"활성 업체의 관리자만 확인할 수 있습니다."};
 
   return {
     ok: true,
