@@ -991,6 +991,32 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    /** Fetch one currently accessible site for an app notification without scanning all sites. */
+    suspend fun assistantNoticeSite(expectedUser:String,companyId:String,siteId:String):JSONObject? {
+        val uuid=Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+        require(uuid.matches(companyId) && uuid.matches(siteId))
+        val verified=verify()
+        check(verified.userId==expectedUser) { "다른 계정입니다." }
+        val company=verified.companies.find { it.id==companyId } ?: error("현재 업체 접근 권한이 없습니다.")
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val owner=company.role=="관리자"
+            val url=if(owner) SUPABASE_URL+"/rest/v1/sites?select=id,company_id,site_name,customer_phone,status,schedule_start,schedule_end,work_dates,address,address_detail,work_description&company_id=eq."+companyId+"&id=eq."+siteId+"&limit=1"
+                else "https://interior-film-ai.vercel.app/api/worker/my-sites?siteId="+siteId
+            val c=SecureTransport.open(url)
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="GET";c.connectTimeout=15000;c.readTimeout=30000
+                if(owner) c.setRequestProperty("apikey",SUPABASE_PUBLIC_KEY)
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(!owner && c.responseCode==404) return@withContext null
+                check(c.responseCode==200) { "현장 정보를 확인하지 못했습니다." }
+                val raw=c.inputStream.bufferedReader().use { it.readText() }
+                val site=if(owner) JSONArray(raw).optJSONObject(0) else JSONObject(raw).optJSONObject("site")
+                if(site!=null) check(site.optString("company_id")==companyId && site.optString("id").ifBlank { site.optString("site_id") }==siteId) { "현장 정보를 확인하지 못했습니다." }
+                site
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantSites(expectedUser: String, companyId: String, callMatchOnly:Boolean=false,dailyOnly:Boolean=false): JSONArray {
         val verified=verify()
         check(verified.userId==expectedUser) { "다른 계정입니다." }

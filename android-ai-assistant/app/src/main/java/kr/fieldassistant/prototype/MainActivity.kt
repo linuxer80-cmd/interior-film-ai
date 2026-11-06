@@ -1257,11 +1257,9 @@ class MainActivity : Activity() {
         siteNoticeBusy=true
         scope.launch {
             try {
-                val sites=auth.assistantSites(current.userId,company.id)
+                val site=auth.assistantNoticeSite(current.userId,company.id,verified.site)
                 if(epoch!=sessionEpoch || account?.userId!=current.userId) return@launch
                 if(!active) { pendingSiteNotice=verified;return@launch }
-                val site=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }
-                    .find { it.optString("id").ifBlank { it.optString("site_id") }==verified.site }
                 if(site==null) { message("현장 배정이나 접근 권한이 변경되어 확인할 수 없습니다.");return@launch }
                 fun value(key:String)=site.optString(key).takeUnless { it.isBlank() || it=="null" }.orEmpty()
                 val address=listOf(value("address"),value("address_detail")).filter { it.isNotBlank() }.joinToString(" ")
@@ -1290,10 +1288,8 @@ class MainActivity : Activity() {
         val epoch=sessionEpoch
         scope.launch {
             try {
-                val sites=auth.assistantSites(uid,target.company)
+                val site=auth.assistantNoticeSite(uid,target.company,target.site)
                 if(epoch!=sessionEpoch || account?.userId!=uid || !active) return@launch
-                val site=(0 until sites.length()).mapNotNull { sites.optJSONObject(it) }
-                    .find { it.optString("id").ifBlank { it.optString("site_id") }==target.site }
                 if(site==null) { message("현장 배정이나 접근 권한이 변경되어 확인할 수 없습니다.");return@launch }
                 if(action=="phone") {
                     val phone=site.optString("customer_phone").filter { it.isDigit() || it=='+' }
