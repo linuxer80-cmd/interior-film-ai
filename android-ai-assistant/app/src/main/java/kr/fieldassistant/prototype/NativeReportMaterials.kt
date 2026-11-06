@@ -185,6 +185,7 @@ internal class NativeReportMaterials(
         val body=record.optJSONObject("body") ?: run { toast("이전 저장 요청을 확인하지 못했습니다.");return }
         busy=true
         scope.launch {
+            var reopen=false
             try {
                 when(record.optString("type")) {
                     "manual" -> auth.settleReportMaterial(uid,company.id,siteId,body)
@@ -194,12 +195,12 @@ internal class NativeReportMaterials(
                 if(!valid()) return@launch
                 check(pending()?.optJSONObject("body")?.optString("requestId")==body.optString("requestId") && prefs.edit().remove(pendingKey).commit()) { "저장 결과는 받았지만 휴대전화 상태를 정리하지 못했습니다. 다시 확인해 주세요." }
                 toast("자재 내역을 저장했습니다. 완료보고에서 다시 확인해 주세요.")
-                busy=false;open()
+                reopen=true
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) { if(valid()) AlertDialog.Builder(activity).setTitle("자재 저장 결과 확인 필요")
                   .setMessage((e.message ?: "저장 결과를 확인하지 못했습니다.")+"\n\n중복 변경을 막기 위해 이전 요청을 보관했습니다. 다시 확인해 주세요.")
                   .setPositiveButton("확인",null).show() }
-            finally { busy=false }
+            finally { busy=false;if(reopen && valid()) open() }
         }
     }
 }
