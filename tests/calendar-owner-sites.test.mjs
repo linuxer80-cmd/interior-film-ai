@@ -39,3 +39,11 @@ test('workers see assigned dates only and database errors stop synchronization',
   assert.equal(events.length,2);assert.ok(events.every(e=>e.start.date===from));
   await assert.rejects(calendarSites(database({},'sites'),'u',from,to),/read failed/);
 });
+
+test('owner and assigned worker consultations are excluded before detail loading',async()=>{
+  const db=database({sites:[
+    {id:'own',company_id:'a',status:'consulting',work_dates:[from,to]},
+    {id:'foreign',company_id:'b',status:'consulting',work_dates:[from,to]},
+  ]},'site_materials');
+  assert.deepEqual(await calendarSites(db,'u',from,to),[]);
+});

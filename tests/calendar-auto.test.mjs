@@ -62,3 +62,15 @@ test('cancelled then reassigned date restores ledger-owned event instead of dupl
 test('ledger can clean app events moved outside window but cannot authorize deleting a personal event',async()=>{
   const c=calendar([{...event,etag:'v1',extendedProperties:{}}]);await assert.rejects(()=>reconcileCalendar({token:'x',userId:user,sites:[],...window,ledger:[{event_id:event.id,work_date:'2026-10-20'}],api:c.api}));assert.equal(c.writes.length,0);
 });
+
+test('returning to consultation removes owned calendar event and confirmation restores it',async()=>{
+  const c=calendar([{...event,etag:'v1'},{id:'personal',summary:'개인 일정'}]);
+  const args={token:'x',userId:user,...window,api:c.api,ledger:[{event_id:event.id,work_date:window.from}]};
+  const result=await reconcileCalendar({...args,sites:[{...site,status:'consulting'}]});
+  assert.equal(result.removed,1);
+  assert.deepEqual(c.writes.map(w=>[w.method,w.id]),[['DELETE',event.id]]);
+  await reconcileCalendar({...args,sites:[{...site,status:'scheduled'}]});
+  assert.equal(c.writes[1].method,'PATCH');
+  assert.equal(c.writes[1].body.status,'confirmed');
+  assert.equal(c.events.get('personal').summary,'개인 일정');
+});
