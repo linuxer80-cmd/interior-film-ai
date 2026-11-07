@@ -19,7 +19,7 @@ internal object NotificationInbox {
     private const val USER="inbox_user"
     private val destinationKeys=setOf("assistant_record","assistant_user","schedule_user","schedule_date",
         "chat_push_kind","chat_push_recipient_id","chat_push_company_id","chat_push_target_id","chat_push_message_id","chat_push_date",
-        "site_notice_user","site_notice_company","site_notice_site","site_notice_id")
+        "site_notice_user","site_notice_company","site_notice_site","site_notice_id","site_notice_action")
     fun owner(user:String)=Bundle().apply { putString(OWNER,user) }
     private fun prefs(c:Context,u:String)=c.getSharedPreferences("notification_history_$u",Context.MODE_PRIVATE)
     @Volatile var onChanged:((String)->Unit)?=null

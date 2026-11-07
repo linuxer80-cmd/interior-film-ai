@@ -15,6 +15,10 @@ class SiteNoticeTargetTest {
         assertNull(SiteNoticeTarget.parse(data + ("company_id" to "not-a-uuid")))
         assertNull(SiteNoticeTarget.parse(data + ("kind" to "team")))
     }
+    @Test fun reportRoutingOnlyAcceptsAllowlistedAction() {
+        assertEquals("report",SiteNoticeTarget.parse(data+("site_action" to "report"))?.action)
+        assertEquals("detail",SiteNoticeTarget.parse(data+("site_action" to "delete"))?.action)
+    }
     @Test fun targetMustMatchCurrentAccountAndCompany() {
         val target=SiteNoticeTarget.parse(data)
         assertEquals(target,SiteNoticeTarget.forAccount(target,user,listOf(company)))
