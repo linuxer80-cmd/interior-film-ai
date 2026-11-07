@@ -323,7 +323,7 @@ internal class NativeChats(
                                 val id=m.optString("sender_id");(0 until (members?.length() ?: 0)).mapNotNull { members?.optJSONObject(it) }.find { it.optString("user_id")==id }?.optString("name")?.takeIf { it.isNotBlank() } ?: if(mine) "나" else "팀원"
                             }
                             val body=m.optString("body").takeUnless { it=="null" }.orEmpty()
-                            val item=label("$sender\n$body\n${m.optString("created_at").take(16).replace('T',' ')}",15f).apply {
+                            val item=label("$sender\n$body\n${ChatHistory.displayTime(m.optString("created_at"))}",15f).apply {
                                 setTextColor(if(mine) Color.WHITE else Color.rgb(43,62,51))
                                 setPadding(dp(14),dp(11),dp(14),dp(11))
                                 setLineSpacing(dp(3).toFloat(),1f)
@@ -350,7 +350,7 @@ internal class NativeChats(
                                         preview.failed=false;preview.hint.text="사진을 다시 확인하는 중…"
                                         scope.launch {
                                             try {
-                                                val fresh=auth.nativeChat(uid,company,kind,target,date,before=if(kind=="customer") photoBefore else "")
+                                                val fresh=auth.nativeChat(uid,company,kind,target,date,before=if(kind=="customer") photoBefore else "",messageId=if(kind=="team") id else "")
                                                 if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
                                                 val items=fresh.getJSONArray("messages")
                                                 preview.url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
@@ -362,7 +362,7 @@ internal class NativeChats(
                                         preview.opening=true;preview.hint.visibility=android.view.View.VISIBLE;preview.hint.text="사진을 여는 중…"
                                         scope.launch {
                                             try {
-                                                val fresh=auth.nativeChat(uid,company,kind,target,date,before=if(kind=="customer") photoBefore else "")
+                                                val fresh=auth.nativeChat(uid,company,kind,target,date,before=if(kind=="customer") photoBefore else "",messageId=if(kind=="team") id else "")
                                                 if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
                                                 val items=fresh.getJSONArray("messages")
                                                 val url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
@@ -379,11 +379,11 @@ internal class NativeChats(
                             }
                         }
                         if(list.length()==0) messages.addView(label("아직 메시지가 없습니다."))
-                        if(kind=="customer" && (if(history.isEmpty()) data.optBoolean("hasOlder") else historyHasOlder)) messages.addView(Button(activity).apply {
+                        if(if(history.isEmpty()) data.optBoolean("hasOlder") else historyHasOlder) messages.addView(Button(activity).apply {
                             text="이전 대화 보기";isEnabled=!historyLoading
                             setOnClickListener {
                                 if(historyLoading || !valid()) return@setOnClickListener
-                                historyBefore=list.optJSONObject(0)?.optString("created_at").orEmpty()
+                                historyBefore=list.optJSONObject(0)?.let { ChatHistory.before(it,kind) }.orEmpty()
                                 if(historyBefore.isBlank()) return@setOnClickListener
                                 historyLoading=true;isEnabled=false
                                 scope.launch {

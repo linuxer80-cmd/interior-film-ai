@@ -241,7 +241,7 @@ internal class AccountAuth private constructor(context: Context) {
     }
 
     /** Existing chat endpoints perform their own server-side authorization. */
-    suspend fun nativeChat(expectedUser:String, company:CompanyAccess, kind:String, target:String="", date:String="", method:String="GET", body:JSONObject?=null, offset:Int=0, before:String=""):JSONObject {
+    suspend fun nativeChat(expectedUser:String, company:CompanyAccess, kind:String, target:String="", date:String="", method:String="GET", body:JSONObject?=null, offset:Int=0, before:String="", messageId:String=""):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role==company.role }) { "계정 또는 업체가 변경되었습니다." }
         require(kind in listOf("customers","customer","team","team_summary") && method in listOf("GET","POST","PATCH"))
@@ -251,10 +251,11 @@ internal class AccountAuth private constructor(context: Context) {
         if(kind !in listOf("team","team_summary")) check(company.role=="관리자") { "고객 채팅은 관리자만 이용할 수 있습니다." }
         if(kind!="customers") require(Regex("^[0-9a-fA-F-]{36}$").matches(target))
         if(kind in listOf("team","team_summary")) require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(date))
+        if(messageId.isNotBlank()) require(kind=="team" && method=="GET" && before.isBlank() && Regex("^[0-9a-fA-F-]{36}$").matches(messageId))
         val path=when(kind) {
             "customers" -> "/api/admin/customer-chat?offset=$offset"
             "customer" -> "/api/admin/customer-chat?thread="+Uri.encode(target)+(if(before.isNotBlank()) "&before="+Uri.encode(before) else "")
-            else -> "/api/worker/team?siteId="+Uri.encode(target)+"&date="+Uri.encode(date)+(if(kind=="team_summary") "&view=summary" else "")
+            else -> "/api/worker/team?siteId="+Uri.encode(target)+"&date="+Uri.encode(date)+(if(kind=="team_summary") "&view=summary" else "")+(if(before.isNotBlank()) "&before="+Uri.encode(before) else "")+(if(messageId.isNotBlank()) "&messageId="+Uri.encode(messageId) else "")
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         if(method=="PATCH") return withContext(Dispatchers.IO) {
