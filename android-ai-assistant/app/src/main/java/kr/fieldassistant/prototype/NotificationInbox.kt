@@ -69,7 +69,8 @@ internal object NotificationInbox {
         val format=SimpleDateFormat("MM/dd HH:mm",Locale.KOREA)
         val labels=items.map {
             val kind=when(it.optString("kind")) { "call"->"상담 전화";"customer"->"고객 채팅";"team"->"팀 채팅";"schedule"->"현장 일정";else->"현장 알림" }
-            "${if(it.optBoolean("read")) "읽음" else "● 안 읽음"} · $kind\n${it.optString("title")}\n${it.optString("body")}\n${format.format(Date(it.optLong("time")))}"
+            val action=when(it.optString("kind")) { "call"->"상담 등록 확인";"customer","team"->"대화 열기";"schedule"->"일정 확인";else->"현장 업무 확인" }
+            "${if(it.optBoolean("read")) "읽음" else "● 안 읽음"} · $kind\n${it.optString("title")}\n${it.optString("body")}\n${format.format(Date(it.optLong("time")))} · $action →"
         }.toTypedArray()
         val dialog=AlertDialog.Builder(context).setTitle("알림함 · 안 읽음 ${unread(context,user)}")
             .setNegativeButton("닫기",null)
