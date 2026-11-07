@@ -1194,6 +1194,7 @@ class MainActivity : Activity() {
             "attendance" -> {
                 val uid=account?.userId ?: return true
                 val company=selectedCompany() ?: return true
+                if(!prefs.edit().putString("selected_company",company.id).commit()) { message("업체 선택을 저장하지 못했습니다.");return true }
                 startActivity(Intent(this,AttendanceActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("company_name",company.name))
             }
             "quotes","report","assignment","expenses","film-use","payment" -> chooseWorkflowSite(featureId)
