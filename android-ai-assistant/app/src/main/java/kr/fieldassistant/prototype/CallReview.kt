@@ -4,10 +4,7 @@ import java.util.Locale
 
 /** Evidence for a person to review, not an assertion of recognition confidence. */
 internal object CallReview {
-    fun phone(value:String):String {
-        val digits=value.filter { it in '0'..'9' }
-        return if(digits.length in 9..11 && digits.startsWith('0')) digits else ""
-    }
+    fun phone(value:String):String = CallPhone.normalize(value)
     fun samePhone(left:String,right:String):Boolean {
         val a=phone(left);return a.isNotEmpty() && a==phone(right)
     }

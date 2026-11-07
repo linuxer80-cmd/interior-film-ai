@@ -2,10 +2,7 @@ package kr.fieldassistant.prototype
 
 /** Conservative hints for review; never invent a full address or name. */
 object CallDraftHints {
-    fun phone(fileName: String): String {
-        val match = Regex("(?<![0-9])01[016789][ -]?[0-9]{3,4}[ -]?[0-9]{4}(?![0-9])").find(fileName) ?: return ""
-        return match.value.filter { it.isDigit() }
-    }
+    fun phone(fileName: String): String = CallPhone.fromFileName(fileName)
 
     fun area(transcript: String): String {
         val text = transcript.replace(Regex("\\s+"), " ")
