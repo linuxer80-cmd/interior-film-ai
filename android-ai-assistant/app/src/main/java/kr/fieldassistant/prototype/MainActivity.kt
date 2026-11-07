@@ -2579,7 +2579,8 @@ class MainActivity : Activity() {
                         val stock=auth.filmStock(uid,companyId,siteId)
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
                         val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장"
-                        appendHomeMessage("${name} · 자재 준비 현황\n\n"+SiteMaterialSummary.describe(stock,siteId));render()
+                        if(owner) showPlannedSiteMaterials(uid,company,siteId,name,SiteMaterialSummary.describe(stock,siteId))
+                        else { appendHomeMessage("${name} · 자재 준비 현황\n\n"+SiteMaterialSummary.describe(stock,siteId));render() }
                     }
                     "phone" -> {
                         val phone=site.optString("customer_phone").filter { it.isDigit() || it=='+' }
@@ -2639,6 +2640,89 @@ class MainActivity : Activity() {
               catch(_:Exception) { if(epoch==sessionEpoch) message("현장 정보를 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
             finally { workerActionBusy=false }
         }
+    }
+    private fun showPlannedSiteMaterials(uid:String,company:CompanyAccess,siteId:String,name:String,stockSummary:String="") {
+        if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
+        val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val data=auth.plannedSiteMaterials(uid,company.id,siteId)
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                val rows=data.getJSONArray("materials")
+                val box=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
+                box.addView(text("현장에서 사용할 자재를 지정합니다. 실제 사용량과 반출·반납은 별도로 기록합니다.",13f))
+                if(rows.length()==0) box.addView(text("등록된 자재가 없습니다. 아래에서 추가해 주세요.",15f))
+                for(i in 0 until rows.length()) {
+                    val row=rows.getJSONObject(i)
+                    fun value(key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty()
+                    box.addView(text(listOf(value("brand"),value("product_code"),value("product_name")).filter { it.isNotBlank() }.joinToString(" · "),16f,true))
+                    box.addView(text((if(value("price_type")=="fire") "방염" else "비방염")+" · 원가 단가 "+value("unit_price").ifBlank { "미확정" }+(if(value("unit_price").isNotBlank()) "원/${value("unit").ifBlank { "m" }}" else "")+value("memo").takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty(),13f))
+                }
+                val dialog=AlertDialog.Builder(this@MainActivity).setTitle("$name · 자재 ${rows.length()}개").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("닫기",null).create()
+                if(data.optBoolean("canWrite")) addButton(box,"자재 추가",true) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();editPlannedSiteMaterial(uid,company,siteId,name) } }
+                if(stockSummary.isNotBlank()) addButton(box,"반출·사용 현황 보기",false) { AlertDialog.Builder(this@MainActivity).setTitle("자재 준비 현황").setMessage(stockSummary).setPositiveButton("닫기",null).show() }
+                dialog.show()
+            } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "자재 목록을 확인하지 못했습니다.") }
+        }
+    }
+    private fun editPlannedSiteMaterial(uid:String,company:CompanyAccess,siteId:String,name:String) {
+        if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
+        val key="planned_material_${uid}_${company.id}_${siteId}"
+        val seed=try { JSONObject(prefs.getString(key,"{}").orEmpty()) } catch(_:Exception) { JSONObject() }
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
+        val fields=listOf("brand" to "브랜드", "product_code" to "제품번호", "product_name" to "제품명", "unit_price" to "원가 단가 (선택 · 비우면 거래처 단가 확인)", "memo" to "사용 부위·메모 (선택)")
+        val inputs=fields.associate { (k,label) -> form.addView(text(label,13f,true));k to EditText(this).apply { setText(seed.optString(k));hint=label;filters=arrayOf(android.text.InputFilter.LengthFilter(if(k=="memo") 1000 else 100));form.addView(this) } }
+        inputs.getValue("unit_price").inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        val type=Spinner(this).apply { adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("방염 구분 선택","비방염","방염"));setSelection(when(seed.optString("price_type")) { "non_fire"->1;"fire"->2;else->0 }) };form.addView(type)
+        var pending=seed.optJSONObject("pending")
+        var busy=false
+        fun draft():JSONObject { val d=JSONObject();fields.forEach { (k,_) -> d.put(k,inputs.getValue(k).text.toString().trim()) };d.put("price_type",when(type.selectedItemPosition) { 1->"non_fire";2->"fire";else->"" });pending?.let { d.put("pending",it) };return d }
+        fun preserve() { if(sitePhotoSessionValid(uid,company)) prefs.edit().putString(key,draft().toString()).apply() }
+        val status=text(if(pending!=null) "이전 저장 결과 확인 필요 · 같은 요청으로 다시 확인합니다." else "수량은 반출·반납에서 관리합니다. 단위는 m입니다.",13f);form.addView(status)
+        fun lock(locked:Boolean) { inputs.values.forEach { it.isEnabled=!locked };type.isEnabled=!locked }
+        lock(pending!=null)
+        addButton(form,"제품 검색해서 채우기",false) {
+            if(busy || pending!=null || !sitePhotoSessionValid(uid,company)) return@addButton
+            val query=EditText(this).apply { hint="예: 현대 S115" }
+            val find=AlertDialog.Builder(this).setTitle("제품 검색").setView(query).setNegativeButton("닫기",null).setPositiveButton("검색",null).create()
+            find.setOnShowListener { find.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val q=query.text.toString().trim();if(q.length<2) { query.error="두 글자 이상 입력해 주세요";return@setOnClickListener }
+                find.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
+                scope.launch { try {
+                    val parsed=SampleSearch.parse(q+" 검색")
+                    val products=auth.publicSamples().filter { p -> if(parsed!=null) SampleSearch.matches(parsed,p) else q.split(Regex("\\s+")).all { token -> (p.brand+" "+p.code+" "+p.name+" "+p.aliases.joinToString(" ")).contains(token,true) } }.take(50)
+                    if(!sitePhotoSessionValid(uid,company) || !find.isShowing) return@launch
+                    if(products.isEmpty()) { message("검색 결과가 없습니다. 제품번호로 검색하거나 직접 입력해 주세요.");return@launch }
+                    AlertDialog.Builder(this@MainActivity).setTitle("제품 선택 · 최대 50개").setItems(products.map { it.brand+" · "+it.code+" · "+it.name }.toTypedArray()) { _,i ->
+                        if(!sitePhotoSessionValid(uid,company) || pending!=null) return@setItems
+                        val p=products[i];inputs.getValue("brand").setText(p.brand);inputs.getValue("product_code").setText(p.code);inputs.getValue("product_name").setText(p.name);preserve();find.dismiss()
+                    }.setNegativeButton("닫기",null).show()
+                } catch(e:CancellationException) { throw e } catch(_:Exception) { if(sitePhotoSessionValid(uid,company)) message("제품을 불러오지 못했습니다. 직접 입력하거나 다시 검색해 주세요.") } finally { if(find.isShowing) find.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true } }
+            } };find.show()
+        }
+        fields.forEach { (k,_) -> inputs.getValue(k).addTextChangedListener(object:android.text.TextWatcher { override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {} ;override fun afterTextChanged(s:android.text.Editable?) {};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { preserve() } }) }
+        val dialog=AlertDialog.Builder(this).setTitle("$name · 자재 추가").setView(ScrollView(this).apply { addView(form) }).setNegativeButton("임시 보관 후 닫기",null).setPositiveButton("저장",null).create()
+        dialog.setOnDismissListener { preserve() }
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(busy || !sitePhotoSessionValid(uid,company)) return@setOnClickListener
+            val body=pending ?: draft().put("id",UUID.randomUUID().toString()).put("siteId",siteId).put("unit","m")
+            if(body.optString("product_code").isBlank() && body.optString("product_name").isBlank()) { inputs.getValue("product_code").error="제품번호 또는 제품명을 입력해 주세요";return@setOnClickListener }
+            if(body.optString("price_type").isBlank()) { message("방염 또는 비방염을 선택해 주세요.");return@setOnClickListener }
+            val price=body.optString("unit_price");if(price.isNotBlank() && (price.toBigDecimalOrNull()?.let { it.signum()>=0 && it<=java.math.BigDecimal(100000000) }!=true)) { inputs.getValue("unit_price").error="올바른 단가를 입력해 주세요";return@setOnClickListener }
+            pending=body
+            if(!prefs.edit().putString(key,draft().toString()).commit()) { pending=null;message("저장 요청을 보관하지 못했습니다.");return@setOnClickListener }
+            busy=true;lock(true);dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false;status.text="저장 중…";val epoch=sessionEpoch
+            scope.launch { try {
+                val saved=auth.plannedSiteMaterials(uid,company.id,siteId,body)
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                dialog.setOnDismissListener(null);prefs.edit().remove(key).apply();dialog.dismiss();message((if(saved.optBoolean("alreadyExists")) "이미 등록된 자재를 확인했습니다." else "현장 자재를 추가했습니다.")+(if(saved.optBoolean("missingPrice")) " 원가 단가는 확인이 필요합니다." else ""));showPlannedSiteMaterials(uid,company,siteId,name)
+            } catch(e:CancellationException) { throw e } catch(e:Exception) {
+                if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) {
+                    if(e is PlannedMaterialInputException) { pending=null;lock(false);preserve();status.text="입력 수정 필요";message(e.message ?: "입력 내용을 확인해 주세요.") }
+                    else { status.text="저장 확인 필요 · 입력은 보관됨";message((e.message ?: "저장 결과를 확인하지 못했습니다.")+"\n저장을 다시 누르면 같은 요청 번호로 확인합니다.") }
+                }
+            } finally { busy=false;if(dialog.isShowing) dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true } }
+        } };dialog.show()
     }
     private fun showWrapUp(uid:String,company:CompanyAccess,siteId:String,name:String,report:JSONObject?,support:JSONObject?,stock:JSONObject?) {
         if(!sitePhotoSessionValid(uid,company) || company.role!="시공자") return
