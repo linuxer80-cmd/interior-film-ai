@@ -3709,6 +3709,7 @@ class MainActivity : Activity() {
                         return true
                     }
                     fun action(kind:String) { if(validToday()) openSiteAction(company.id,site.id,kind) }
+                    addButton(card,if(company.role=="관리자") "일정 · 배정 확인" else "길 안내",true) { action(if(company.role=="관리자") "schedule" else "navigate") }
                     actions("현장 상세",{ if(validToday()) lookupSites(AssistantRequests.Request("detail"),site.id) },"길 안내",{ action("navigate") })
                     actions("자재 확인",{ action("materials") },if(company.role=="시공자") "현장 마무리" else "시공자 배정",{ action(if(company.role=="시공자") "wrap_up" else "schedule") })
                     addButton(details,"팀원과 채팅",false) { action("team_chat") }
@@ -4171,6 +4172,17 @@ class MainActivity : Activity() {
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val company=selectedCompany();val uid=account?.userId
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
+        if(company!=null && uid!=null) {
+            val tasks=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
+            tasks.addView(text("지금 처리할 일",18f,true))
+            if(company.role=="관리자") {
+                addButton(tasks,"연락할 상담 확인",true) { startActivity(Intent(this,BusinessToolsActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("mode","follow-ups").putExtra("filter","due")) }
+                addButton(tasks,"고객 메시지 확인",false) { openCustomerChats() }
+            } else addButton(tasks,"오늘 현장 팀 채팅",true) { openTodayTeamChats() }
+            addButton(tasks,if(dailyExpanded) "오늘 현장 접기" else "오늘 현장 · 준비할 일 보기",false) { dailyExpanded=!dailyExpanded;openDailyOnReady=dailyExpanded;if(state==null||state.error)loadDailyAssistant(true);render() }
+            tasks.addView(text("목록을 열면 최신 상태를 확인합니다.",12f,false,Color.rgb(89,111,96)))
+            body.addView(tasks,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
+        }
         if(dailyExpanded && company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
         val conversationHeading=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         conversationHeading.addView(text("비서와 대화",18f,true),LinearLayout.LayoutParams(0,-2,1f))
@@ -4354,6 +4366,12 @@ class MainActivity : Activity() {
                 else -> "등록 전 확인"
             }
             summary.addView(text(status,12f,true,Color.rgb(49,92,72)))
+            summary.addView(text(when {
+                item.optString("site_id").isNotBlank() -> "서버에 저장되었습니다. 아래에서 등록 현장을 열 수 있습니다."
+                id in savingRegistrations -> "서버 저장 결과를 확인하고 있습니다. 중복으로 등록하지 마세요."
+                reg!=null -> "저장 결과를 다시 확인해야 합니다. 아래 안내에서 기존 요청을 이어가세요."
+                else -> "분석 내용입니다. 아직 현장에 저장되지 않았습니다."
+            },13f,false,Color.rgb(89,111,96)))
             summary.addView(text(data.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "현장명을 확인해 주세요",20f,true).apply { setPadding(0,dp(6),0,dp(12)) })
             listOf("고객" to "customer_name","연락처" to "customer_phone","주소" to "address","시공 내용" to "work_description").forEach { (label,field) ->
                 val value=data.optString(field).takeUnless { it.isBlank() || it=="null" } ?: "미확인"

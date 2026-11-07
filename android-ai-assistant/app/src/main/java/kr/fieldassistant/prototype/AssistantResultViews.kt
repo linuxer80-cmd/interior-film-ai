@@ -71,6 +71,10 @@ internal object AssistantResultViews {
                 listOf("전화" to "phone","길 안내" to "navigate","팀 채팅" to "team_chat").forEach { (title,section)->
                     quick.addView(ui.button(title).apply { minWidth=0;minimumWidth=0;setOnClickListener { onAction(siteId,section) } },LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(8),dp(3),dp(8)) })
                 };card.addView(quick)
+                NextSiteAction.suggest(field("상태"),ownerActions)?.let { next ->
+                    card.addView(label("다음 작업 · "+next.reason,13f))
+                    card.addView(ui.button(next.title,true).apply { setOnClickListener { onAction(siteId,next.section) } },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(4),dp(6),dp(10)) })
+                }
                 val tabs=LinearLayout(context);val panel=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL }
                 card.addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled=false;addView(tabs) });card.addView(panel)
                 val groups=linkedMapOf("기본" to listOf("현장 사진" to "gallery",(if(ownerActions) "기본정보 수정" else "현장 업무 전체 (웹)") to if(ownerActions) "info" else "all"))
