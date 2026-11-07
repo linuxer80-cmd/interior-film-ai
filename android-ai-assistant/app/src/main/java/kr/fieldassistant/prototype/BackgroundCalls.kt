@@ -135,6 +135,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     if(count>=3) { needsRetry=true;break }
                     val record=JSONObject().put("id",id).put("name",file.name)
                     var candidate=false
+                    var failed=false
                     if(!BackgroundCalls.running.compareAndSet(false,true)) { needsRetry=true;break }
                     try {
                         count++
@@ -150,13 +151,18 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                             .put("offline_candidate",candidate).put("offline_truncated",result.truncated)
                     } catch(e: InterruptedException) { break
                     } catch(_: Exception) {
+                        failed=true
                         record.put("status","분석 실패").put("summary","휴대폰에서 이 녹음을 분석하지 못했습니다. 앱에서 다시 시도해 주세요.")
                     }
                     finally { BackgroundCalls.running.set(false) }
                     synchronized(BackgroundCalls.lock) {
                         if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return@synchronized
-                        processed.add(id)
-                        check(background.edit().putString("record_$key",record.toString()).putStringSet("processed",processed.toSet()).remove("size_$key").remove("time_$key").commit())
+                        val attempts=if(failed) background.getInt("attempts_$key",0)+1 else 0
+                        if(CallRetryPolicy.shouldRetry(failed,attempts)) needsRetry=true else processed.add(id)
+                        val edit=background.edit().putInt("attempts_$key",attempts).putStringSet("processed",processed.toSet())
+                        // Publishing a record makes the foreground mark it seen. Publish only after retry is complete.
+                        if(!CallRetryPolicy.shouldRetry(failed,attempts)) edit.putString("record_$key",record.toString()).remove("size_$key").remove("time_$key")
+                        check(edit.commit())
                         if(candidate) notifyCandidate(ctx,uid,id)
                     }
                 }

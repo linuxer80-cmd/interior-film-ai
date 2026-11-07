@@ -345,6 +345,7 @@ class MainActivity : Activity() {
     @Deprecated("Android Activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==1008) { activeNativeChats?.photoSelected(if(resultCode==RESULT_OK) data?.data else null);return }
         if(requestCode==1007) {
             val request=reportVoiceRequest;reportVoiceRequest=null
             if(resultCode==RESULT_OK && request!=null && account?.userId==request.uid && selectedCompany()?.id==request.companyId) {
@@ -814,6 +815,7 @@ class MainActivity : Activity() {
         submitRegistration(id)
     }
     private fun editChatDraft(id: String) {
+        val editEpoch=sessionEpoch;val editCompany=selectedCompany()?.id ?: return
         val item=recordById(id) ?: return
         if(item.optJSONObject("registration")!=null || id in savingRegistrations) return
         val draft=item.optJSONObject("chat_draft") ?: return
@@ -823,9 +825,48 @@ class MainActivity : Activity() {
             box.addView(text(label,13f,true))
             key to EditText(this).apply { setText(draft.optString(key));setSingleLine(key!="memo");box.addView(this) }
         }
+        val candidates=item.optJSONObject("analysis_candidates")
+        val dates=EditText(this).apply { hint="시공 날짜: 2026-11-07, 2026-11-08";setText((draft.optJSONArray("work_dates") ?: JSONArray()).let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } });box.addView(this) }
+        val amountInputs=listOf("contract_amount" to "계약금액 (원)","deposit_amount" to "선금 (원)").associate { (key,label) ->
+            box.addView(text(label,13f,true));key to EditText(this).apply { hint=label;inputType=android.text.InputType.TYPE_CLASS_NUMBER;setText(draft.optString(key,"").takeUnless { it=="null" }.orEmpty());box.addView(this) }
+        }
+        if(candidates!=null) {
+            box.addView(text("분석 결과를 확인한 항목만 선택하세요. 금액은 신규 현장에 적용하며 기존 현장의 금액은 유지됩니다.",13f))
+            fun candidateButton(label:String,action:()->Unit) { addButton(box,label,false,action) }
+            val candidateDates=candidates.optJSONArray("work_dates") ?: JSONArray().apply { candidates.optString("date").takeIf { it.isNotBlank() && it!="null" }?.let { put(it) } }
+            if(candidateDates.length()>0) candidateButton("찾은 날짜 입력: "+(0 until candidateDates.length()).joinToString(", ") { candidateDates.optString(it) }) { dates.setText((0 until candidateDates.length()).joinToString(", ") { candidateDates.optString(it) }) }
+            amountInputs.forEach { (key,edit) ->
+                candidates.optString(key).takeIf { it.matches(Regex("[0-9]{1,12}")) }?.let { value ->
+                    candidateButton((if(key=="contract_amount") "계약금액" else "선금")+" 입력: "+value+"원") { edit.setText(value) }
+                }
+            }
+        }
+        val quoteChoice=CheckBox(this).apply { text="분석된 견적 항목을 견적 초안에 반영";isChecked=draft.optJSONObject("consultation_quote_seed")?.optJSONArray("items")?.length()?.let { it>0 }==true }
+        val quoteCandidates=candidates?.optJSONArray("quote_items")
+        if(quoteCandidates!=null && quoteCandidates.length()>0) { box.addView(text((0 until quoteCandidates.length()).joinToString("\n") { quoteCandidates.optJSONObject(it)?.let { q -> q.optString("name")+" · "+q.optString("detail")+" · "+q.optString("quantity")+q.optString("unit") }.orEmpty() },13f));box.addView(quoteChoice) }
+        val materialCandidates=candidates?.optJSONArray("materials") ?: JSONArray()
+        val selectedMaterials=mutableListOf<Pair<CheckBox,JSONObject>>()
+        if(materialCandidates.length()>0) box.addView(text("자재는 제품 목록에 등록됩니다. 수량·단가는 자재 화면에서 확인 후 입력하세요.",13f))
+        for(i in 0 until minOf(materialCandidates.length(),60)) {
+            val m=materialCandidates.optJSONObject(i) ?: continue
+            if(m.optString("product_code").isBlank() && m.optString("product_name").isBlank()) continue
+            val check=CheckBox(this).apply { text=listOf("brand","product_code","product_name").map { m.optString(it).takeUnless { v -> v=="null" }.orEmpty() }.filter { it.isNotBlank() }.joinToString(" · ") }
+            val existingMaterials=draft.optJSONArray("materials") ?: JSONArray()
+            check.isChecked=(0 until existingMaterials.length()).any { n -> existingMaterials.optJSONObject(n)?.let { saved -> saved.optString("brand")==m.optString("brand") && saved.optString("product_code")==m.optString("product_code") && saved.optString("product_name")==m.optString("product_name") }==true }
+            box.addView(check);selectedMaterials.add(check to m)
+        }
         val dialog=AlertDialog.Builder(this).setTitle("등록 내용 수정").setView(ScrollView(this).apply { addView(box) }).setNegativeButton("취소",null).setPositiveButton("수정",null).create()
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(editEpoch!=sessionEpoch || selectedCompany()?.id!=editCompany || recordById(id)?.optJSONObject("registration")!=null) { message("계정 또는 등록 상태가 변경되었습니다. 다시 열어 주세요.");return@setOnClickListener }
             if(edits.getValue("site_name").text.toString().isBlank()) { edits.getValue("site_name").error="현장명을 입력해 주세요.";return@setOnClickListener }
+            try {
+                val chosenDates=ConsultationInput.dates(dates.text.toString())
+                amountInputs.forEach { (_,edit) -> ConsultationInput.amount(edit.text.toString()) }
+                draft.put("work_dates",JSONArray(chosenDates))
+                amountInputs.forEach { (key,edit) -> draft.put(key,edit.text.toString()) }
+                if(quoteCandidates!=null) draft.put("consultation_quote_seed",JSONObject().put("items",if(quoteChoice.isChecked) quoteCandidates else JSONArray()).put("other_schedule",candidates?.optString("other_schedule","").orEmpty()))
+                if(selectedMaterials.isNotEmpty()) draft.put("materials",JSONArray(selectedMaterials.filter { it.first.isChecked }.map { (_,m) -> JSONObject(m.toString()).put("unit_price","").put("quantity",0) }))
+            } catch(e:Exception) { message(e.message ?: "날짜와 금액을 확인해 주세요.");return@setOnClickListener }
             val limits=mapOf("site_name" to 300,"customer_name" to 200,"customer_phone" to 100,"address" to 500,"work_description" to 1000,"memo" to 4000)
             edits.forEach { (key,edit) -> draft.put(key,edit.text.toString().trim().take(limits.getValue(key))) }
             if(changeRecord(id) { it.put("chat_draft",draft).remove("preview_target_id");it.remove("preview_target_phone") }) { callMatches=null;chatMessage(id,"등록 내용을 수정했습니다. 아래 내용을 ${selectedCompany()?.name}에 등록할까요?");dialog.dismiss();render();lookupCallMatches(id) }
@@ -2143,9 +2184,9 @@ class MainActivity : Activity() {
         .put("customer_phone",field("customer_phone").take(100)).put("address",listOf(field("address"),field("address_detail")).filter { it.isNotBlank() }.joinToString(" ").take(500))
         .put("work_description",field("work_description").take(1000)).put("memo",memo).put("source",source)
         .put("work_dates",JSONArray()).put("materials",JSONArray()).put("consultation_quote_seed",JSONObject().put("items",JSONArray()).put("other_schedule",""))
-    val messages=JSONArray().put(JSONObject().put("user",false).put("body","AI 분석 결과입니다. 날짜·금액·자재는 확인용 메모에 보관했으며 자동으로 확정하지 않습니다. 내용을 수정하고 등록해 주세요."))
+    val messages=JSONArray().put(JSONObject().put("user",false).put("body","AI 분석 결과입니다. 등록 내용 수정에서 날짜·금액·견적 항목·자재를 확인하고 선택해 주세요. 선택하지 않은 항목은 메모로 보관합니다."))
     val item=JSONObject().put("id",id).put("name","상담 내용 분석").put("status","직접 입력").put("manual_site",true)
-        .put("chat_disposition","active").put("chat_company",company.id).put("chat_draft",draft).put("chat_messages",messages)
+        .put("chat_disposition","active").put("chat_company",company.id).put("chat_draft",draft).put("analysis_candidates",data).put("chat_messages",messages)
     val items=records();items.put(item)
     check(prefs.edit().putString("records",items.toString()).remove("text_analysis_company").commit()) { "분석 결과를 보관하지 못했습니다." }
     chatId=id;render();editChatDraft(id)
@@ -2526,6 +2567,25 @@ class MainActivity : Activity() {
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 상태").setMessage(content).setPositiveButton("닫기",null)
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) {
             val actions=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),0,dp(16),0) }
+            actions.addView(text("작업 내용을 작성하고 사진·인건비를 확인한 뒤 아래에서 제출하세요. 작성 내용은 자동으로 임시 저장됩니다.",13f))
+            for((key,label) in listOf("region" to "시공 부위","summary" to "실제 시공 내용","memo" to "메모")) {
+                actions.addView(text(label,13f,true))
+                val previousKey=when(key) { "region" -> "work_region";"summary" -> "work_summary";else -> "memo" }
+                val edit=EditText(this).apply { hint=label;setText(prefs.getString(prefix+key,null) ?: value(previousKey));minLines=if(key=="summary") 3 else 1;filters=arrayOf(android.text.InputFilter.LengthFilter(5000)) }
+                if(sitePhotoSessionValid(uid,company) && !prefs.contains(prefix+key)) prefs.edit().putString(prefix+key,edit.text.toString()).apply()
+                edit.addTextChangedListener(object:android.text.TextWatcher {
+                    override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+                    override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { if(sitePhotoSessionValid(uid,company)) prefs.edit().putString(prefix+key,s?.toString().orEmpty()).apply() }
+                    override fun afterTextChanged(s:android.text.Editable?) {}
+                })
+                actions.addView(edit)
+            }
+            val progress=text("",13f)
+            fun updateProgress() { progress.text="작업 내용: "+(if(prefs.getString(prefix+"summary","").orEmpty().isBlank()) "미입력" else "작성됨")+" · 인건비: "+(if(prefs.contains(prefix+"labor")) "입력됨" else "확인 필요") }
+            updateProgress();actions.addView(progress)
+            val draftListener=android.content.SharedPreferences.OnSharedPreferenceChangeListener { _,key -> if(key?.startsWith(prefix)==true) updateProgress() }
+            prefs.registerOnSharedPreferenceChangeListener(draftListener)
+            dialog.setOnDismissListener { prefs.unregisterOnSharedPreferenceChangeListener(draftListener) }
             val photo=Button(this).apply { text="시공 사진 등록";setOnClickListener {
                 AlertDialog.Builder(this@MainActivity).setTitle("등록할 사진 선택").setItems(arrayOf("시공 전 사진","시공 완료 사진")) { _,index ->
                     pickReportPhoto(ReportPhotoRequest(uid,company,siteId,siteName,if(index==1) "after" else "before"))
@@ -2540,7 +2600,7 @@ class MainActivity : Activity() {
             }
             actions.addView(Button(this).apply { text="인건비 임시 입력";setOnClickListener { prepareNativeLaborDraft(uid,company,siteId) } })
             actions.addView(Button(this).apply { text="완료보고 제출 준비";setOnClickListener { prepareNativeReportSubmit(uid,company,siteId,siteName) } })
-            dialog.setView(actions)
+            dialog.setView(ScrollView(this).apply { addView(actions) })
         }
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
             if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId,report?.takeIf { it.optString("review_status")=="rejected" })

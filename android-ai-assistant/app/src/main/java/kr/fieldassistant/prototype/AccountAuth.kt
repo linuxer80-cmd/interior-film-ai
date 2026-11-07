@@ -216,8 +216,29 @@ internal class AccountAuth private constructor(context: Context) {
         }
     } }
 
+    suspend fun sendCustomerPhoto(expectedUser:String,company:CompanyAccess,target:String,id:String,text:String,bytes:ByteArray,mime:String):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role=="관리자" }) { "계정 또는 업체가 변경되었습니다." }
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(target) && Regex("^[0-9a-fA-F-]{36}$").matches(id))
+        require(bytes.isNotEmpty() && bytes.size<=2*1024*1024 && mime in listOf("image/jpeg","image/png","image/webp"))
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val form=okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
+                .addFormDataPart("messageId",id).addFormDataPart("text",text)
+                .addFormDataPart("photo","photo",bytes.toRequestBody(mime.toMediaType())).build()
+            val request=Request.Builder().url("https://interior-film-ai.vercel.app/api/admin/customer-chat?thread="+Uri.encode(target))
+                .header("Authorization","Bearer "+token).post(form).build()
+            chatHttp.newCall(request).execute().use { response ->
+                val raw=response.body?.byteStream()?.use { SecureTransport.readBounded(it,1024*1024) } ?: ByteArray(0)
+                val result=try { JSONObject(raw.toString(Charsets.UTF_8)) } catch(_:Exception) { JSONObject() }
+                check(response.isSuccessful) { result.optString("error").ifBlank { "사진 전송 결과를 확인하지 못했습니다. 다시 시도해 주세요." } }
+                result
+            }
+        }
+    }
+
     /** Existing chat endpoints perform their own server-side authorization. */
-    suspend fun nativeChat(expectedUser:String, company:CompanyAccess, kind:String, target:String="", date:String="", method:String="GET", body:JSONObject?=null, offset:Int=0):JSONObject {
+    suspend fun nativeChat(expectedUser:String, company:CompanyAccess, kind:String, target:String="", date:String="", method:String="GET", body:JSONObject?=null, offset:Int=0, before:String=""):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role==company.role }) { "계정 또는 업체가 변경되었습니다." }
         require(kind in listOf("customers","customer","team","team_summary") && method in listOf("GET","POST","PATCH"))
@@ -229,7 +250,7 @@ internal class AccountAuth private constructor(context: Context) {
         if(kind in listOf("team","team_summary")) require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(date))
         val path=when(kind) {
             "customers" -> "/api/admin/customer-chat?offset=$offset"
-            "customer" -> "/api/admin/customer-chat?thread="+Uri.encode(target)
+            "customer" -> "/api/admin/customer-chat?thread="+Uri.encode(target)+(if(before.isNotBlank()) "&before="+Uri.encode(before) else "")
             else -> "/api/worker/team?siteId="+Uri.encode(target)+"&date="+Uri.encode(date)+(if(kind=="team_summary") "&view=summary" else "")
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
