@@ -856,7 +856,7 @@ class MainActivity : Activity() {
         val candidates=item.optJSONObject("analysis_candidates")
         val dates=EditText(this).apply { hint="시공 날짜: 2026/11/7, 2026/11/8";setText((draft.optJSONArray("work_dates") ?: JSONArray()).let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } });box.addView(this) }
         val amountInputs=listOf("contract_amount" to "계약금액 (원)","deposit_amount" to "선금 (원)").associate { (key,label) ->
-            box.addView(text(label,13f,true));key to EditText(this).apply { hint="예: 250,000원 또는 25만원";keyListener=android.text.method.DigitsKeyListener.getInstance("0123456789,. 만원");filters=arrayOf(android.text.InputFilter.LengthFilter(40));setText(draft.optString(key,"").takeUnless { it=="null" }.orEmpty());box.addView(this) }
+            box.addView(text(label,13f,true));key to EditText(this).apply { hint="예: 250,000원 또는 25만원";inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;setSingleLine(true);filters=arrayOf(android.text.InputFilter.LengthFilter(40));setText(draft.optString(key,"").takeUnless { it=="null" }.orEmpty());box.addView(this) }
         }
         if(candidates!=null) {
             box.addView(text("분석 결과를 확인한 항목만 선택하세요. 금액은 신규 현장에 적용하며 기존 현장의 금액은 유지됩니다.",13f))
