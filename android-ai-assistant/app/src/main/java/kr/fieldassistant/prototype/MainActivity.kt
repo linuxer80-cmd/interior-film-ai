@@ -919,6 +919,58 @@ class MainActivity : Activity() {
     private var homeInput=""
     private var displayedHomeConsultationId: String? = null
     private var dailyExpanded=false
+    private fun followUpItems():List<JSONObject> {
+        val company=selectedCompany()?.takeIf { it.role=="관리자" } ?: return emptyList()
+        val items=records()
+        return ConsultationFollowUp.ordered((0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
+            .filter { ConsultationFollowUp.eligible(it,company.id,consultationDisposition(it)) },ScheduleDates.today())
+    }
+    private fun followUpName(item:JSONObject):String {
+        val data=item.optJSONObject("registration")?.optJSONObject("data") ?: item.optJSONObject("chat_draft")
+        return data?.optString("site_name")?.takeIf { it.isNotBlank() && it!="null" } ?: item.optString("name").ifBlank { "상담" }
+    }
+    private fun showFollowUps(waiting:Boolean) {
+        val today=ScheduleDates.today()
+        val items=followUpItems().filter { ConsultationFollowUp.waiting(it,today)==waiting }
+        if(items.isEmpty()) { message(if(waiting) "고객 답변을 기다리는 상담이 없습니다." else "처리할 상담이 없습니다.");return }
+        AlertDialog.Builder(this).setTitle(if(waiting) "고객 답변 대기" else "내가 처리할 상담")
+            .setItems(items.map { followUpName(it)+"\n"+ConsultationFollowUp.label(it,today) }.toTypedArray()) { _,index ->
+                showRegistrationConfirmation(items[index].optString("id"))
+            }.setNegativeButton("닫기",null).show()
+    }
+    private fun editFollowUp(id:String) {
+        val user=account?.userId ?: return
+        val company=selectedCompany()?.takeIf { it.role=="관리자" } ?: return
+        val item=recordById(id)?.takeIf { it.optString("chat_company")==company.id } ?: return
+        val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(12)) }
+        fun choice(label:String,values:List<String>,selected:Int):android.widget.Spinner {
+            form.addView(text(label,14f,true).apply { setPadding(0,dp(12),0,dp(4)) })
+            return android.widget.Spinner(this).apply {
+                adapter=android.widget.ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,values)
+                setSelection(selected.coerceAtLeast(0));form.addView(this,LinearLayout.LayoutParams(-1,dp(52)))
+            }
+        }
+        val stageKeys=ConsultationFollowUp.stages.keys.toList();val actionKeys=ConsultationFollowUp.actions.keys.toList()
+        val stage=choice("상담 단계",ConsultationFollowUp.stages.values.toList(),stageKeys.indexOf(ConsultationFollowUp.stage(item)))
+        val action=choice("다음 할 일",ConsultationFollowUp.actions.values.toList(),actionKeys.indexOf(ConsultationFollowUp.action(item)))
+        form.addView(text("다시 연락할 날짜 · 선택",14f,true).apply { setPadding(0,dp(12),0,dp(4)) })
+        val date=EditText(this).apply { hint="예: 2026-11-10";setSingleLine(true);setText(ConsultationFollowUp.date(item)) }
+        form.addView(date)
+        form.addView(text("연락일이 되면 홈의 ‘내가 처리할 상담’에 표시합니다. 구글 캘린더에는 추가하지 않습니다. 이 휴대폰의 상담 관리에 저장되며 시공 상태는 바뀌지 않습니다.",13f))
+        val dialog=AlertDialog.Builder(this).setTitle("상담 진행 관리").setView(ScrollView(this).apply { addView(form) })
+            .setNegativeButton("취소",null).setPositiveButton("저장",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(account?.userId!=user || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") {
+                message("상담을 관리하던 업체로 변경해 주세요.");dialog.dismiss();return@setOnClickListener
+            }
+            val normalized=try { ConsultationFollowUp.normalizedDate(date.text.toString()) } catch(e:IllegalArgumentException) {
+                date.error=e.message ?: "연락 날짜를 확인해 주세요.";date.requestFocus();return@setOnClickListener
+            }
+            val follow=JSONObject().put("stage",stageKeys[stage.selectedItemPosition]).put("action",actionKeys[action.selectedItemPosition]).put("date",normalized)
+            if(changeRecord(id) { it.put("follow_up",follow) }) { dialog.dismiss();visibleConversationKey=null;render();message("상담 진행을 저장했습니다.") }
+            else message("저장하지 못했습니다. 다시 시도해 주세요.")
+        } };dialog.show()
+    }
     private fun showConversationList() {
         val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
         if(entries.isEmpty()) { message("아직 상담 대화가 없습니다.");return }
@@ -3767,7 +3819,7 @@ class MainActivity : Activity() {
     }
     private fun renderHomeChat() {
         val candidate=latestConsultation()
-        val key=listOf("home",account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
+        val key=listOf("home",followUpItems().map { it.optString("id")+it.optJSONObject("follow_up").toString() },account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
             prefs.getString("selected_site_company",null),prefs.getString("selected_site_id",null),prefs.getString("selected_site_name",null),
             candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
         if(visibleConversationKey==key) {
@@ -3807,6 +3859,17 @@ class MainActivity : Activity() {
         }
         page.addView(todayBar,LinearLayout.LayoutParams(-1,dp(48)).apply { setMargins(0,dp(6),0,0) })
         val isOwner=pinnedCompany?.role=="관리자"
+        if(isOwner) {
+            val followups=followUpItems();val waiting=followups.count { ConsultationFollowUp.waiting(it,ScheduleDates.today()) }
+            page.addView(text("처리할 상담 ${followups.size-waiting} · 답변 대기 $waiting  ›",13f,true).apply {
+                gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(48);setPadding(dp(14),0,dp(14),0)
+                isClickable=true;isFocusable=true
+                setOnClickListener { AlertDialog.Builder(this@MainActivity).setTitle("상담 후 할 일")
+                    .setItems(arrayOf("내가 처리할 상담 ${followups.size-waiting}","고객 답변 대기 $waiting")) { _,which -> showFollowUps(which==1) }
+                    .setNegativeButton("닫기",null).show() }
+            },LinearLayout.LayoutParams(-1,-2))
+        }
+
         val quickRow=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         fun quick(label:String,icon:Int,action:()->Unit) {
             val item=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;isClickable=true;isFocusable=true;contentDescription=label;setPadding(dp(4),dp(10),dp(4),dp(10));background=bg(Color.WHITE,16,Color.rgb(230,232,222)) }
@@ -3981,7 +4044,7 @@ class MainActivity : Activity() {
     private fun renderChat(id: String) {
         val item=recordById(id) ?: run { chatId=null;render();return }
         val key=listOf("call",account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,id,item.optJSONArray("chat_messages"),
-            item.optJSONObject("chat_draft"),item.optJSONObject("registration"),item.optString("transcript"),
+            item.optJSONObject("chat_draft"),item.optJSONObject("registration"),item.optJSONObject("follow_up"),item.optString("transcript"),
             item.optString("site_id"),item.optString("preview_target_id"),callMatches,consultationDisposition(item),id in savingRegistrations).toString()
         if(visibleConversationKey==key) return
         val screen=listOf(account?.userId,selectedCompany()?.id,selectedCompany()?.role,id)
@@ -4024,6 +4087,10 @@ class MainActivity : Activity() {
                 summary.addView(text(value,15f).apply { setTextIsSelectable(true) })
             }
             body.addView(summary,0,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(16),0,dp(4)) })
+        }
+        if(selectedCompany()?.role=="관리자" && item.optString("chat_company")==selectedCompany()?.id) {
+            body.addView(text(ConsultationFollowUp.label(item,ScheduleDates.today()),14f,true).apply { setPadding(0,dp(12),0,0) })
+            addButton(body,"상담 단계 · 다음 할 일 변경",false) { editFollowUp(id) }
         }
         val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;visibility=if(consultationDetailsExpanded) View.VISIBLE else View.GONE }
         val detailsLabel=if(item.optBoolean("manual_site")) "상세 확인" else "통화 원문 · 상세 확인"
