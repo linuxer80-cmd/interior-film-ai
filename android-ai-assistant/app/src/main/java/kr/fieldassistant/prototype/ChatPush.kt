@@ -60,7 +60,6 @@ class ChatPushService:FirebaseMessagingService() {
         val target=ChatPushTarget.parse(message.data) ?: return
         if(ChatPushRegistration.activeUser(applicationContext)!=target.user) return
         ChatInboxEvents.emit(target)
-        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         val manager=getSystemService(NotificationManager::class.java) ?: return
         val channel="chat_messages"
         AssistantNotificationChannels.ensure(manager,channel,"채팅 메시지",NotificationManager.IMPORTANCE_HIGH)
@@ -69,6 +68,10 @@ class ChatPushService:FirebaseMessagingService() {
             data=Uri.parse("fieldassistant://chat-notification/${target.message}")
             target.addTo(this)
         }
+        NotificationInbox.record(this,target.user,"chat-${target.message}",target.kind,
+            message.data["title"] ?: if(target.kind=="customer") "고객 메시지" else "팀원 메시지",
+            message.data["body"] ?: "새 메시지가 있습니다.",intent,"chat-${target.message}",0)
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         val pending=PendingIntent.getActivity(this,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification=Notification.Builder(this,channel).addExtras(NotificationInbox.owner(target.user)).setSmallIcon(android.R.drawable.ic_dialog_email)
             .setContentTitle(message.data["title"]?.take(120)?.takeIf { it.isNotBlank() } ?: if(target.kind=="customer") "고객 메시지" else "팀원 메시지")
@@ -84,7 +87,6 @@ class ChatPushService:FirebaseMessagingService() {
         if(ChatPushRegistration.activeUser(applicationContext)!=user) return
         val title=data["title"]?.take(120)?.takeIf { it.isNotBlank() } ?: return
         val text=data["body"]?.take(500) ?: return
-        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         val manager=getSystemService(NotificationManager::class.java) ?: return
         val channel="app_notifications"
         AssistantNotificationChannels.ensure(manager,channel,"앱 알림",NotificationManager.IMPORTANCE_HIGH)
@@ -97,6 +99,8 @@ class ChatPushService:FirebaseMessagingService() {
                 putExtra("site_notice_site",target.site);putExtra("site_notice_id",target.notice)
             }
         }
+        NotificationInbox.record(this,user,"notice-$id","notice",title,text,intent,"notice-$id",0)
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         val pending=PendingIntent.getActivity(this,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notice=Notification.Builder(this,channel).addExtras(NotificationInbox.owner(user)).setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title).setContentText(text).setStyle(Notification.BigTextStyle().bigText(text))

@@ -27,7 +27,6 @@ internal object CallNotifications {
             .putExtra("assistant_record",id).putExtra("assistant_user",uid).putExtra("assistant_decision","yes")
         val no=Intent(ctx,CallNotificationDeclineReceiver::class.java).setAction(DECLINE).setData(identity(uid,id,"no"))
             .putExtra("assistant_record",id).putExtra("assistant_user",uid)
-        val review=PendingIntent.getActivity(ctx,0,yes,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val decline=PendingIntent.getBroadcast(ctx,0,no,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val record=try {
             val saved=JSONArray(ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE).getString("records","[]"))
@@ -38,6 +37,8 @@ internal object CallNotifications {
         val detail=listOf("site_name","customer_name","work_description").mapNotNull { key -> draft?.optString(key)?.takeIf { it.isNotBlank() && it!="null" } }.joinToString(" · ").take(140)
             .ifBlank { record?.optString("name")?.take(100).orEmpty() }
         val body=listOf(detail,"현장에 등록할까요?").filter { it.isNotBlank() }.joinToString("\n")
+        NotificationInbox.record(ctx,uid,"call-$id","call","견적 문의로 보이는 전화가 왔습니다",body,yes,null,id.hashCode() and Int.MAX_VALUE)
+        val review=PendingIntent.getActivity(ctx,0,yes,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(ctx,"assistant_results").addExtras(NotificationInbox.owner(uid)).setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("견적 문의로 보이는 전화가 왔습니다")
             .setContentText(body).setStyle(Notification.BigTextStyle().bigText(body))
@@ -49,9 +50,10 @@ internal object CallNotifications {
         if(ChatPushRegistration.activeUser(ctx)!=uid || ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE).getBoolean(declinedKey(id),false)) return
         val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         AssistantNotificationChannels.ensure(manager,"assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT)
+        val notification=build(ctx,uid,id)
         if(Build.VERSION.SDK_INT>=33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
         if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
-        try { manager.notify(id.hashCode() and Int.MAX_VALUE,build(ctx,uid,id)) } catch(_:SecurityException) { }
+        try { manager.notify(id.hashCode() and Int.MAX_VALUE,notification) } catch(_:SecurityException) { }
     }
     fun decline(ctx:Context,uid:String,id:String):Boolean = synchronized(BackgroundCalls.lock) {
         if(uid.isBlank() || id.isBlank() || ChatPushRegistration.activeUser(ctx)!=uid) return@synchronized false
@@ -76,6 +78,7 @@ class CallNotificationDeclineReceiver:BroadcastReceiver() {
         val uid=intent?.getStringExtra("assistant_user") ?: return
         val id=intent.getStringExtra("assistant_record") ?: return
         if(CallNotifications.decline(context,uid,id)) {
+            NotificationInbox.markRead(context,uid,"call-$id")
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(id.hashCode() and Int.MAX_VALUE)
         } else Toast.makeText(context,"이 통화의 등록 상태를 앱에서 확인해 주세요.",Toast.LENGTH_LONG).show()
     }

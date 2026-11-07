@@ -150,14 +150,15 @@ class ScheduleWorker(c:Context,p:WorkerParameters):CoroutineWorker(c,p) {
     private fun send(c:Context,uid:String,date:String,kind:String):Boolean {
         val manager=c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         AssistantNotificationChannels.ensure(manager,"assistant_results","비서 알림",NotificationManager.IMPORTANCE_DEFAULT)
-        if(Build.VERSION.SDK_INT>=33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return false
-        if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return false
         val code=("schedule:$uid:$date:$kind".hashCode() and Int.MAX_VALUE)
         val intent=Intent(c,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra("schedule_user",uid).putExtra("schedule_date",date)
-        val pending=PendingIntent.getActivity(c,code,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val title=if(kind=="morning") "오늘 시공 일정이 있어요" else "새 시공 일정이 등록됐어요"
         val text=if(kind=="morning") "일정을 확인하고 현장까지 길 안내를 받을까요?" else "배정된 시공 일정을 확인해 주세요."
+        NotificationInbox.record(c,uid,"schedule:$date:$kind","schedule",title,"$date · $text",intent,null,code)
+        if(Build.VERSION.SDK_INT>=33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return false
+        if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return false
+        val pending=PendingIntent.getActivity(c,code,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return try { manager.notify(code,Notification.Builder(c,"assistant_results").setSmallIcon(android.R.drawable.ic_dialog_info)
             .addExtras(NotificationInbox.owner(uid)).setContentTitle(title).setContentText(text).setContentIntent(pending).setVisibility(Notification.VISIBILITY_PRIVATE).setAutoCancel(true).build());true }
         catch(_:SecurityException) { false }
