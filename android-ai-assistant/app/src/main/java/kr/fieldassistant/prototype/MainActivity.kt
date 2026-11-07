@@ -113,7 +113,7 @@ class MainActivity : Activity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         window.statusBarColor = Color.rgb(248, 247, 242)
         window.navigationBarColor = Color.rgb(248, 247, 242)
-        captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent)
+        NotificationInbox.opened(this,intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent)
         render()
         restoreLogin()
     }
@@ -124,6 +124,7 @@ class MainActivity : Activity() {
     /** A single inset owner reserves system bars, cutouts and the keyboard.
      * Absolute wrapper padding avoids accumulating insets after repeated dispatch. */
     private var visibleConversationKey: String? = null
+    private var inboxBadge: TextView? = null
     private var consultationScroll: ScrollView? = null
     private var consultationScreen: List<String?>? = null
     private var consultationMessageCount = 0
@@ -133,6 +134,7 @@ class MainActivity : Activity() {
     private fun setAssistantContent(content: View) {
         visibleConversationKey=null
         consultationScroll=null
+        inboxBadge=null
         homeBottomNavigation=null
         homeQuickActions=null
         val safeArea=FrameLayout(this).apply {
@@ -208,16 +210,18 @@ class MainActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
+        NotificationInbox.onChanged={ user -> if(account?.userId==user) inboxBadge?.text="알림 ${NotificationInbox.unread(this,user)}" }
         // Refresh the displayed state after returning from system settings.
         if(account!=null) { render();ChatPushRegistration.enqueue(applicationContext,replace=true) }
     }
     override fun onStop() {
+        NotificationInbox.onChanged=null
         active = false; activeNativeChats?.pause();handler.removeCallbacks(handlerScan)
         if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
         super.onStop()
     }
     override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent);setIntent(intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice()
+        super.onNewIntent(intent);setIntent(intent);NotificationInbox.opened(this,intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice()
         if(intent.getBooleanExtra("oauth_complete",false)) { intent.removeExtra("oauth_complete");restoreLogin() }
     }
     override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
@@ -931,8 +935,9 @@ class MainActivity : Activity() {
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
         bar.addView(text("현장 AI 비서",19f,true,Color.WHITE),LinearLayout.LayoutParams(0,-2,1f))
         val web=TextView(this).apply { text="웹앱";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="필름장이 웹앱 열기";setOnClickListener { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } } }
-        val inbox=TextView(this).apply { text="알림";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) } } }
-        bar.addView(inbox,LinearLayout.LayoutParams(dp(48),dp(52)))
+        val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
+        inboxBadge=inbox
+        bar.addView(inbox,LinearLayout.LayoutParams(dp(58),dp(52)))
         bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
         val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
@@ -3762,7 +3767,7 @@ class MainActivity : Activity() {
     }
     private fun renderHomeChat() {
         val candidate=latestConsultation()
-        val key=listOf("home",account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
+        val key=listOf("home",account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
             prefs.getString("selected_site_company",null),prefs.getString("selected_site_id",null),prefs.getString("selected_site_name",null),
             candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
         if(visibleConversationKey==key) {
@@ -3975,7 +3980,7 @@ class MainActivity : Activity() {
 
     private fun renderChat(id: String) {
         val item=recordById(id) ?: run { chatId=null;render();return }
-        val key=listOf("call",account?.userId,selectedCompany()?.id,id,item.optJSONArray("chat_messages"),
+        val key=listOf("call",account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,id,item.optJSONArray("chat_messages"),
             item.optJSONObject("chat_draft"),item.optJSONObject("registration"),item.optString("transcript"),
             item.optString("site_id"),item.optString("preview_target_id"),callMatches,consultationDisposition(item),id in savingRegistrations).toString()
         if(visibleConversationKey==key) return
