@@ -1,3 +1,4 @@
+import { teamChatPage,teamChatCursor } from '../lib/teamChatPage.mjs';
 import { readChatBody } from '../lib/chatRequestBody.mjs';
 import { teamPhotoMessages,uploadTeamPhoto } from '../lib/teamChatPhoto.mjs';
 import test from 'node:test';
@@ -8,7 +9,7 @@ import {authorizedTeam,includeTeamOwners,teamDate,teamMessage} from '../lib/work
 const S='11111111-1111-4111-8111-111111111111',DAY='2026-10-21';
 function fixture(extra={}){
  const tables={profiles:[{id:'owner',role:'owner',company_id:'co',name:'관리자',is_active:true}],companies:[{id:'co',is_active:true}],sites:[{id:S,company_id:'co',status:'in_progress',work_dates:[DAY]}],workers:[{id:'w',user_id:'worker',company_id:'co',is_active:true,name:'팀원'}],site_daily_assignments:[{id:'a',site_id:S,company_id:'co',work_date:DAY,worker_id:'w',role:'member'}],site_workers:[],worker_team_messages:[],labor_profiles:[],...extra};
- const db={rpc:async()=>({data:[]}),from(name){const filters=[];let single=false,range=null,insert=null;const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},order(){return q},limit(){return q},range(a,b){range=[a,b];return q},maybeSingle(){single=true;return q},single(){single=true;return q},insert(row){insert=row;return q},then(resolve){if(insert){(tables[name]??=[]).push(insert);return Promise.resolve({error:null}).then(resolve)}let rows=(tables[name]||[]).filter(r=>filters.every(f=>f(r)));if(range)rows=rows.slice(range[0],range[1]+1);return Promise.resolve({data:single?rows[0]||null:rows,error:null}).then(resolve)}};return q}};return {db,tables};
+ const db={rpc:async()=>({data:[]}),from(name){const filters=[];let single=false,range=null,insert=null,limit=Infinity;const ordering=[];const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},order(k,{ascending=true}={}){ordering.push([k,ascending]);return q},limit(n){limit=n;return q},or(expression){const match=expression.match(/^created_at.lt.(.*),and\(created_at.eq.(.*),id.lt.(.*)\)$/);if(!match)throw Error('Unexpected filter');filters.push(r=>r.created_at<match[1]||(r.created_at===match[2]&&r.id<match[3]));return q},range(a,b){range=[a,b];return q},maybeSingle(){single=true;return q},single(){single=true;return q},insert(row){insert=row;return q},then(resolve){if(insert){(tables[name]??=[]).push(insert);return Promise.resolve({error:null}).then(resolve)}let rows=(tables[name]||[]).filter(r=>filters.every(f=>f(r)));rows.sort((a,b)=>{for(const [key,asc] of ordering){const n=String(a[key]).localeCompare(String(b[key]));if(n)return asc?n:-n;}return 0});rows=rows.slice(0,limit);if(range)rows=rows.slice(range[0],range[1]+1);return Promise.resolve({data:single?rows[0]||null:rows,error:null}).then(resolve)}};return q}};return {db,tables};
 }
 test('owner accesses own site without worker membership, never another company',async()=>{
  const f=fixture();assert.equal((await resolveTeamSite(f.db,'owner',S)).ownerAccess,true);
@@ -28,7 +29,7 @@ test('team adds active same-company owner once and preserves assignment role',()
 });
 function route(f,user='owner'){
  const src=fs.readFileSync(new URL('../app/api/worker/team/route.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
- return new Function('readChatBody','teamPhotoMessages','uploadTeamPhoto','after','dispatchTeamMessage','privateAuth','privateJson','uuid','resolveTeamSite','authorizedTeam','includeTeamOwners','teamDate','teamMessage',src+';return {GET,POST,PATCH};')(readChatBody,teamPhotoMessages,uploadTeamPhoto,()=>{},()=>{},async()=>({db:f.db,user:{id:user}}),(b,s=200)=>Response.json(b,{status:s}),v=>/^[0-9a-f-]{36}$/i.test(v),resolveTeamSite,authorizedTeam,includeTeamOwners,teamDate,teamMessage);
+ return new Function('teamChatPage','teamChatCursor','readChatBody','teamPhotoMessages','uploadTeamPhoto','after','dispatchTeamMessage','privateAuth','privateJson','uuid','resolveTeamSite','authorizedTeam','includeTeamOwners','teamDate','teamMessage',src+';return {GET,POST,PATCH};')(teamChatPage,teamChatCursor,readChatBody,teamPhotoMessages,uploadTeamPhoto,()=>{},()=>{},async()=>({db:f.db,user:{id:user}}),(b,s=200)=>Response.json(b,{status:s}),v=>/^[0-9a-f-]{36}$/i.test(v),resolveTeamSite,authorizedTeam,includeTeamOwners,teamDate,teamMessage);
 }
 test('unassigned owner reads and writes team messages; workers still require exact day',async()=>{
  const f=fixture();const url='https://app.example/api/worker/team?siteId='+S+'&date='+DAY;
@@ -63,4 +64,24 @@ test('team photo POST authorizes room before accepting multipart attachments and
  let res=await route(f,'worker').POST(new Request(url.replace(DAY,'2026-10-22'),{method:'POST',body:form()}));assert.equal(res.status,403);assert.equal(uploads,0);
  res=await route(f,owner).POST(new Request(url,{method:'POST',body:form()}));assert.equal(res.status,200);assert.equal(uploads,1);assert.ok(f.tables.worker_team_messages[0].image_path.includes('/team-chat/'+owner+'/'));
  res=await route(f,owner).POST(new Request(url,{method:'POST',body:form()}));assert.equal(res.status,200);assert.equal(uploads,1);assert.equal(f.tables.worker_team_messages.length,1);
+});
+
+test('team history pages through equal timestamps without losing rows and scopes photo lookup',async()=>{
+ const f=fixture(),time='2026-11-07T00:00:00.123456+00:00';
+ const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
+ f.tables.worker_team_messages=Array.from({length:205},(_,i)=>({id:id(i+1),company_id:'co',site_id:S,work_date:DAY,sender_id:'owner',body:'row '+i,created_at:time}));
+ f.tables.worker_team_messages.push({id:id(999),company_id:'foreign',site_id:S,work_date:DAY,created_at:time});
+ const url='https://app.example/api/worker/team?siteId='+S+'&date='+DAY,r=route(f,'worker');
+ const ids=[];let cursor='',pages=0;
+ do {
+  const res=await r.GET(new Request(url+(cursor?'&before='+encodeURIComponent(cursor):'')));assert.equal(res.status,200);
+  const body=await res.json();ids.push(...body.messages.map(m=>m.id));pages++;
+  assert.equal(body.messages.length,pages<3?100:5);cursor=body.nextBefore;assert.equal(body.hasOlder,Boolean(cursor));
+ }while(cursor&&pages<4);
+ assert.equal(pages,3);assert.equal(new Set(ids).size,205);assert.equal(ids.length,205);
+ const old=await(await r.GET(new Request(url+'&messageId='+id(1)))).json();assert.deepEqual(old.messages.map(m=>m.id),[id(1)]);
+ const foreign=await(await r.GET(new Request(url+'&messageId='+id(999)))).json();assert.equal(foreign.messages.length,0);
+ assert.equal((await r.GET(new Request(url.replace(DAY,'2026-10-22')+'&messageId='+id(1)))).status,403);
+ for(const bad of ['bad',time+'|'+id(1)+',id.gt.0',time+'|bad'])assert.equal((await r.GET(new Request(url+'&before='+encodeURIComponent(bad)))).status,400);
+ assert.equal((await r.GET(new Request(url+'&messageId='+id(1)+'&before='+encodeURIComponent(time+'|'+id(2))))).status,400);
 });

@@ -1,3 +1,4 @@
+import { teamChatPage, teamChatCursor } from '../../../../lib/teamChatPage.mjs';
 import { readChatBody } from '../../../../lib/chatRequestBody.mjs';
 import { uploadTeamPhoto, teamPhotoMessages } from '../../../../lib/teamChatPhoto.mjs';
 import { after } from 'next/server';
@@ -56,6 +57,7 @@ export async function GET(request){try{
   if(a.url.searchParams.get('view')==='summary') {
     return privateJson(await teamInboxSummary(a.db,{companyId:a.site.company_id,siteId:a.site.id,date:a.date,userId:a.user.id}));
   }
+  const page=teamChatPage(a.url);
   const users=[...new Set(a.members.map(w=>w.user_id).filter(Boolean))];
   const profiles=users.length?await a.db.from('labor_profiles').select('user_id,name,region,skills,experience_years,introduction,photo_path').in('user_id',users):{data:[]};
   if(profiles.error)throw profiles.error;
@@ -64,15 +66,19 @@ export async function GET(request){try{
     if(p?.photo_path){const signed=await a.db.storage.from('labor-avatars').createSignedUrl(p.photo_path,300);photoUrl=signed.data?.signedUrl||null;}
     return {id:w.id,user_id:w.user_id,name:p?.name||w.name,phone:w.phone,role:w.role,assignment_role:w.assignment_role,profile:p?{region:p.region,skills:p.skills,experience_years:p.experience_years,introduction:p.introduction,photoUrl}:null};
   }));
-  let q=a.db.from('worker_team_messages').select('id,sender_id,body,created_at,image_path').eq('company_id',a.site.company_id).eq('site_id',a.site.id).eq('work_date',a.date).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(100);
+  let q=a.db.from('worker_team_messages').select('id,sender_id,body,created_at,image_path').eq('company_id',a.site.company_id).eq('site_id',a.site.id).eq('work_date',a.date).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(page.messageId?1:101);
+  if(page.messageId)q=q.eq('id',page.messageId);
+  if(page.before)q=q.or(`created_at.lt.${page.before},and(created_at.eq.${page.before},id.lt.${page.id})`);
   const result=await q;
   if(result.error&& !['42P01','PGRST205'].includes(result.error.code))throw result.error;
-  const ids=(result.data||[]).map(m=>m.id);
+  const rows=(result.data||[]).slice(0,100),hasOlder=!page.messageId&&(result.data||[]).length>100;
+  const nextBefore=hasOlder?teamChatCursor(rows.at(-1)):null;
+  const ids=rows.map(m=>m.id);
   const reads=ids.length ? await a.db.rpc('team_message_read_counts',{p_ids:ids}) : {data:[]};
   if(reads.error && !['PGRST202','42883','42P01','PGRST205'].includes(reads.error.code))throw reads.error;
   const counts=new Map((reads.data||[]).map(row=>[row.message_id,Number(row.unread_count)]));
-  const messages=await teamPhotoMessages(a.db,a,(result.data||[]).reverse().map(m=>({...m,unreadCount:reads.error?null:counts.get(m.id)||0})));
-  return privateJson({members,messages,userId:a.user.id,readReady:!reads.error,chatReady:!result.error,notice:result.error?'팀원 채팅 설정 SQL을 먼저 실행해주세요.':null});
+  const messages=await teamPhotoMessages(a.db,a,rows.reverse().map(m=>({...m,unreadCount:reads.error?null:counts.get(m.id)||0})));
+  return privateJson({members,messages,hasOlder,nextBefore,userId:a.user.id,readReady:!reads.error,chatReady:!result.error,notice:result.error?'팀원 채팅 설정 SQL을 먼저 실행해주세요.':null});
 }catch(e){return failure(e);}}
 export async function POST(request){try{
   const a=await context(request);

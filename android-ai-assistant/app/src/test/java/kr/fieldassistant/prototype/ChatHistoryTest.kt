@@ -17,4 +17,14 @@ class ChatHistoryTest {
         val merged=ChatHistory.merge(emptyList(),JSONArray().put(row("b","2026-11-01","b")).put(row("a","2026-11-01","a")))
         assertEquals("a",merged.getJSONObject(0).getString("id"))
     }
+    @Test fun teamCursorIncludesTieBreakerAndCustomerKeepsExistingCursor() {
+        val r=row("a","2026-11-07T00:00:00.000001+00:00","body")
+        assertEquals("2026-11-07T00:00:00.000001+00:00|a",ChatHistory.before(r,"team"))
+        assertEquals("2026-11-07T00:00:00.000001+00:00",ChatHistory.before(r,"customer"))
+    }
+    @Test fun displaysKoreanTimeAcrossMidnightWithoutChangingDeviceTimezone() {
+        assertEquals("2026-11-08 00:30",ChatHistory.displayTime("2026-11-07T15:30:00Z"))
+        assertEquals("2026-11-08 00:30",ChatHistory.displayTime("2026-11-08T00:30:00+09:00"))
+        assertEquals("시간 확인 중",ChatHistory.displayTime("not a date"))
+    }
 }
