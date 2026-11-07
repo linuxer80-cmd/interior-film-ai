@@ -3395,7 +3395,7 @@ class MainActivity : Activity() {
                 }.setNegativeButton("닫기",null).show();return
         }
         val doc=if(resume && saved.optInt("revision",-1)==revision && saved.optJSONObject("document")!=null) JSONObject(saved.getJSONObject("document").toString()) else JSONObject(source.toString())
-        var finished=false;var changed=false;var draftSave:()->Unit={}
+        var finished=false;var changed=false;var editorOpen=true;var draftSave:()->Unit={}
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(8)) }
         form.addView(text("입력 내용은 이 휴대폰에 임시 보관됩니다. 서버에는 ‘저장’ 후 반영됩니다.",13f))
         draftPrefs.getString(draftKey+"_previous",null)?.let { old->form.addView(Button(this).apply { text="이전 임시 내용 확인 · 복사";setOnClickListener {
@@ -3439,6 +3439,69 @@ class MainActivity : Activity() {
             val items=JSONArray();itemInputs.forEach { edit->val row=JSONObject();keys.forEachIndexed { i,key->row.put(key,edit[i].text.toString().trim()) };items.put(row) }
             return copy.put("items",items).put("vat",vatValues[vat.selectedItemPosition])
         }
+        fun quoteSessionValid()=editorOpen && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role=="관리자" && !finished
+        fun replaceItems(values:JSONArray) {
+            rows.removeAllViews();itemInputs.clear()
+            for(i in 0 until values.length()) addItem(values.getJSONObject(i))
+            draftSave()
+        }
+        form.addView(Button(this).apply { text="다른 현장 견적 항목 가져오기";setOnClickListener {
+            if(!quoteSessionValid() || workerActionBusy) return@setOnClickListener
+            workerActionBusy=true
+            scope.launch {
+                try {
+                    val list=auth.assistantSites(uid,company.id)
+                    if(!quoteSessionValid() || !active) return@launch
+                    val candidates=(0 until list.length()).mapNotNull { list.optJSONObject(it) }.filter { it.optString("id")!=siteId }
+                    if(candidates.isEmpty()) { message("가져올 다른 현장이 없습니다.");return@launch }
+                    val pickerBody=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(8)) }
+                    val search=EditText(this@MainActivity).apply { hint="현장명 검색";setSingleLine() };pickerBody.addView(search)
+                    val choices=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL };pickerBody.addView(ScrollView(this@MainActivity).apply { addView(choices) },LinearLayout.LayoutParams(-1,dp(320)))
+                    val picker=AlertDialog.Builder(this@MainActivity).setTitle("견적을 가져올 현장").setView(pickerBody).setNegativeButton("닫기",null).create()
+                    fun display(query:String) {
+                        choices.removeAllViews()
+                        val matches=candidates.filter { it.optString("site_name").contains(query,true) }
+                        choices.addView(text("${matches.size}개 현장 · 최대 30개 표시",12f))
+                        matches.take(30).forEach { site ->
+                            addButton(choices,site.optString("site_name").ifBlank { "이름 없는 현장" },false) {
+                                if(!quoteSessionValid() || workerActionBusy) return@addButton
+                                workerActionBusy=true
+                                scope.launch {
+                                    try {
+                                        val incoming=auth.assistantQuote(uid,company.id,site.getString("id")).getJSONObject("document")
+                                        val copied=QuoteReuse.items(incoming,false)
+                                        if(!quoteSessionValid() || !active) return@launch
+                                        AlertDialog.Builder(this@MainActivity).setTitle("${copied.length()}개 견적 항목 가져오기")
+                                            .setMessage("현재 항목을 교체합니다. 고객·주소·날짜·부가세는 현재 견적 그대로 유지하며, 원본 비고는 가져오지 않습니다. 수량과 단가는 이 현장에 맞게 확인해 주세요. 서버에는 저장 버튼을 눌러야 반영됩니다.")
+                                            .setPositiveButton("수량 포함") { _,_->
+                                                if(quoteSessionValid()) {
+                                                    val backup=JSONObject().put("revision",revision).put("document",snapshot())
+                                                    if(draftPrefs.edit().putString(draftKey+"_before_import",backup.toString()).commit()) { replaceItems(copied);picker.dismiss();message("항목을 가져왔습니다. 저장 전 수량과 단가를 확인해 주세요.") } else message("기존 내용을 보관하지 못해 가져오지 않았습니다.")
+                                                }
+                                            }.setNeutralButton("수량 비우기") { _,_->
+                                                if(quoteSessionValid()) {
+                                                    val backup=JSONObject().put("revision",revision).put("document",snapshot())
+                                                    if(draftPrefs.edit().putString(draftKey+"_before_import",backup.toString()).commit()) { replaceItems(QuoteReuse.items(incoming,true));picker.dismiss();message("항목을 가져왔습니다. 수량을 입력해 주세요.") } else message("기존 내용을 보관하지 못해 가져오지 않았습니다.")
+                                                }
+                                            }.setNegativeButton("취소",null).show()
+                                    } catch(e:CancellationException) { throw e } catch(e:Exception) { if(quoteSessionValid()) message(e.message ?: "견적을 가져오지 못했습니다.") } finally { workerActionBusy=false }
+                                }
+                            }
+                        }
+                    }
+                    watchDraft(search) { display(search.text.toString().trim()) };display("");picker.show()
+                } catch(e:CancellationException) { throw e } catch(e:Exception) { if(quoteSessionValid()) message(e.message ?: "현장을 확인하지 못했습니다.") } finally { workerActionBusy=false }
+            }
+        } })
+        form.addView(Button(this).apply { text="가져오기 전 항목 복원";setOnClickListener {
+            if(!quoteSessionValid() || workerActionBusy) return@setOnClickListener
+            val backup=runCatching { JSONObject(draftPrefs.getString(draftKey+"_before_import",null) ?: "{}") }.getOrDefault(JSONObject())
+            val oldItems=backup.optJSONObject("document")?.optJSONArray("items")
+            if(oldItems==null) { message("이 휴대폰에 보관된 가져오기 전 항목이 없습니다.");return@setOnClickListener }
+            if(backup.optInt("revision",-1)!=revision) { message("서버 견적 버전이 달라 자동 복원할 수 없습니다.");return@setOnClickListener }
+            AlertDialog.Builder(this@MainActivity).setTitle("이전 ${oldItems.length()}개 항목으로 복원할까요?").setMessage("현재 편집 중인 항목이 바뀝니다. 서버 저장은 별도로 진행합니다.")
+                .setPositiveButton("복원") { _,_->if(quoteSessionValid()) { replaceItems(oldItems);message("가져오기 전 항목으로 복원했습니다.") } }.setNegativeButton("취소",null).show()
+        } })
         val status=text("서버에 저장하기 전입니다.",12f);form.addView(status)
         val saveTask=Runnable {
             if(!finished && changed && account?.userId==uid && selectedCompany()?.id==company.id) {
@@ -3456,7 +3519,7 @@ class MainActivity : Activity() {
         }
         val dialog=AlertDialog.Builder(this).setTitle("상담 견적서 작성").setMessage("입력 내용을 확인한 뒤 저장합니다.")
             .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장 내용 확인",null).setNegativeButton("임시 보관 후 닫기",null).create()
-        dialog.setOnDismissListener { flush();draftFlushers.remove(flush);if(changed && !finished && account?.userId==uid)message("작성 중인 견적서를 임시 보관했습니다.") }
+        dialog.setOnDismissListener { editorOpen=false;flush();draftFlushers.remove(flush);if(changed && !finished && account?.userId==uid)message("작성 중인 견적서를 임시 보관했습니다.") }
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
             fields.forEach { (key,_) -> doc.put(key,inputs.getValue(key).text.toString().trim()) }
