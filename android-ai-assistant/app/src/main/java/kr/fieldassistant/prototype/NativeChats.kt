@@ -31,6 +31,8 @@ internal class NativeChats(
     private val activity:Activity, private val auth:AccountAuth, private val scope:CoroutineScope,
     private val uid:String, private val company:CompanyAccess, private val valid:()->Boolean
 ) {
+    private var photoResult:((Uri)->Unit)?=null
+    fun photoSelected(uri:Uri?) { val callback=photoResult;photoResult=null;if(uri!=null && valid()) callback?.invoke(uri) }
     private var liveJob:Job?=null
     private var startLive:(()->Unit)?=null
     private var currentDialog:AlertDialog?=null
@@ -38,7 +40,7 @@ internal class NativeChats(
     private var refreshInbox:(()->Unit)?=null
     fun pause() { liveJob?.cancel();liveJob=null;inboxListener?.let { ChatInboxEvents.detach(it) } }
     fun resume() { inboxListener?.let { ChatInboxEvents.attach(it) };refreshInbox?.invoke();startLive?.invoke() }
-    fun close() { pause();refreshInbox=null;inboxListener=null;startLive=null;currentDialog?.dismiss();currentDialog=null }
+    fun close() { photoResult=null;pause();refreshInbox=null;inboxListener=null;startLive=null;currentDialog?.dismiss();currentDialog=null }
     private fun dp(n:Int)=(n*activity.resources.displayMetrics.density).toInt()
     private fun label(s:String,size:Float=15f)=TextView(activity).apply { text=s;textSize=size;setPadding(dp(8),dp(8),dp(8),dp(8)) }
     private fun background(color:Int,radius:Int,border:Int?=null)=GradientDrawable().apply {
@@ -175,8 +177,20 @@ internal class NativeChats(
         val messages=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;setPadding(0,dp(8),0,dp(12)) }
         scroll.addView(messages);root.addView(status);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val input=EditText(activity).apply { hint="메시지를 입력하세요";textSize=16f;maxLines=4;setPadding(dp(12),dp(10),dp(8),dp(10));background=null;filters=arrayOf(android.text.InputFilter.LengthFilter(2000)) }
+        val drafts=activity.getSharedPreferences("chat_drafts_$uid",android.content.Context.MODE_PRIVATE)
+        val draftKey="${company.id}:$kind:$target:$date"
+        input.setText(drafts.getString(draftKey,""))
+        input.addTextChangedListener(object:android.text.TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { if(valid()) drafts.edit().putString(draftKey,s?.toString().orEmpty()).apply() }
+            override fun afterTextChanged(s:android.text.Editable?) {}
+        })
         val send=Button(activity).apply { text="보내기";isAllCaps=false;setTextColor(Color.WHITE);background=background(Color.rgb(35,84,59),20);minWidth=dp(66);minimumWidth=dp(66);contentDescription="메시지 보내기" }
         val compose=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),dp(4),dp(4),dp(4));background=background(Color.WHITE,24,Color.rgb(225,229,220));addView(input,LinearLayout.LayoutParams(0,-2,1f));addView(send,LinearLayout.LayoutParams(dp(72),dp(48))) }
+        var photoBytes:ByteArray?=null;var photoMime="";var photoVersion=0
+        val photoButton=Button(activity).apply { text="사진 첨부" }
+        val attachmentPreview=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER;visibility=android.view.View.GONE;contentDescription="보낼 사진 미리보기" }
+        if(kind=="customer") { root.addView(photoButton);root.addView(attachmentPreview,LinearLayout.LayoutParams(-1,dp(96))) }
         root.addView(compose)
         lateinit var dialog:AlertDialog
         lateinit var refresh:()->Unit
@@ -193,7 +207,35 @@ internal class NativeChats(
         currentDialog=dialog
         val handler=Handler(Looper.getMainLooper());var closed=false;var loading=false;var pendingRefresh=false;var sending=false
         var lastVersion="";var firstLoad=true;var pendingText="";var pendingId="";var lastAcknowledged="";var chatAllowed=true
+        var historyBefore="";var historyLoading=false;var historyAnchor:Int?=null
+        val history=linkedMapOf<String,JSONObject>()
+        var historyHasOlder=true
         var latestCustomerView:TextView?=null;var latestCustomerAt=""
+        photoButton.setOnClickListener {
+            if(sending || !valid()) return@setOnClickListener
+            if(photoBytes!=null) { photoBytes=null;photoMime="";photoVersion++;photoButton.text="사진 첨부";attachmentPreview.setImageDrawable(null);attachmentPreview.visibility=android.view.View.GONE;return@setOnClickListener }
+            photoResult={ uri ->
+                if(!closed && dialog.isShowing && valid()) scope.launch {
+                    try {
+                        val mime=activity.contentResolver.getType(uri).orEmpty()
+                        check(mime in listOf("image/jpeg","image/png","image/webp")) { "JPG·PNG·WebP 사진을 선택해 주세요." }
+                        val bytes=withContext(Dispatchers.IO) { activity.contentResolver.openInputStream(uri)?.use { SecureTransport.readBounded(it,2*1024*1024) } ?: error("사진을 열지 못했습니다.") }
+                        val preview=withContext(Dispatchers.IO) {
+                            val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true };BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+                            val sample=ChatPhotoLoader.sampleSize(bounds.outWidth,bounds.outHeight,480) ?: error("사진 크기를 확인해 주세요.")
+                            BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply { inSampleSize=sample }) ?: error("사진 형식을 확인해 주세요.")
+                        }
+                        if(!closed && dialog.isShowing && valid()) { photoBytes=bytes;photoMime=mime;photoVersion++;photoButton.text="사진 첨부됨 · 누르면 취소";attachmentPreview.setImageBitmap(preview);attachmentPreview.visibility=android.view.View.VISIBLE } else preview.recycle()
+                    } catch(e:CancellationException) { throw e }
+                      catch(_:Exception) { if(!closed && valid()) toast("사진을 불러오지 못했습니다. JPG·PNG·WebP, 2MB 이하 사진을 선택해 주세요.") }
+                }
+            }
+            try { activity.startActivityForResult(android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),1008) }
+            catch(_:Exception) { photoResult=null;toast("사진 선택창을 열지 못했습니다.") }
+        }
+        var pendingPhotoVersion=-1
+        pendingId=drafts.getString(draftKey+":sendId","").orEmpty();pendingText=drafts.getString(draftKey+":sendText","").orEmpty()
+        if(pendingId.isNotBlank()) pendingPhotoVersion=0
         val teamViews=linkedMapOf<String,TextView>();val teamRead=mutableSetOf<String>();var teamReadReady=false
         val markVisible=object:Runnable { override fun run() {
             if(closed || !dialog.isShowing || !valid() || kind!="team" || !teamReadReady) return
@@ -260,7 +302,8 @@ internal class NativeChats(
                 try {
                     val data=auth.nativeChat(uid,company,kind,target,date)
                     if(closed || !dialog.isShowing || !valid()) return@launch
-                    val list=data.getJSONArray("messages")
+                    val newest=data.getJSONArray("messages")
+                    val list=ChatHistory.merge(history.values,newest)
                     // Signed URLs rotate on each response; they are not message changes.
                     for(i in 0 until list.length()) list.optJSONObject(i)?.let { row ->
                         val id=row.optString("id");val url=row.optString("image_url").takeUnless { it=="null" }.orEmpty()
@@ -291,6 +334,7 @@ internal class NativeChats(
                             if(kind=="customer" && !mine && m.optString("created_at")==latestCustomerAt) latestCustomerView=item
                             if(kind=="team" && !mine && m.optString("id").matches(Regex("^[0-9a-fA-F-]{36}$"))) teamViews[m.optString("id")]=item
                             if(kind=="customer" && m.optBoolean("has_image")) {
+                                val photoBefore=try { java.time.OffsetDateTime.parse(m.optString("created_at")).plusNanos(1000).toString() } catch(_:Exception) { "" }
                                 val id=m.optString("id");val url=m.optString("image_url").takeUnless { it=="null" }.orEmpty()
                                 val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER;contentDescription="채팅 사진 확대해서 보기" }
                                 val hint=label("사진을 불러오는 중…",13f).apply { gravity=Gravity.CENTER;setTextColor(Color.rgb(89,111,96));setPadding(dp(8),dp(8),dp(8),dp(8)) }
@@ -305,7 +349,7 @@ internal class NativeChats(
                                         preview.failed=false;preview.hint.text="사진을 다시 확인하는 중…"
                                         scope.launch {
                                             try {
-                                                val fresh=auth.nativeChat(uid,company,"customer",target)
+                                                val fresh=auth.nativeChat(uid,company,"customer",target,before=photoBefore)
                                                 if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
                                                 val items=fresh.getJSONArray("messages")
                                                 preview.url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
@@ -317,7 +361,7 @@ internal class NativeChats(
                                         preview.opening=true;preview.hint.visibility=android.view.View.VISIBLE;preview.hint.text="사진을 여는 중…"
                                         scope.launch {
                                             try {
-                                                val fresh=auth.nativeChat(uid,company,"customer",target)
+                                                val fresh=auth.nativeChat(uid,company,"customer",target,before=photoBefore)
                                                 if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
                                                 val items=fresh.getJSONArray("messages")
                                                 val url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
@@ -334,9 +378,31 @@ internal class NativeChats(
                             }
                         }
                         if(list.length()==0) messages.addView(label("아직 메시지가 없습니다."))
-                        if(kind=="customer" && data.optBoolean("hasOlder")) messages.addView(label("이전 대화가 더 있습니다.",12f),0)
+                        if(kind=="customer" && (if(history.isEmpty()) data.optBoolean("hasOlder") else historyHasOlder)) messages.addView(Button(activity).apply {
+                            text="이전 대화 보기";isEnabled=!historyLoading
+                            setOnClickListener {
+                                if(historyLoading || !valid()) return@setOnClickListener
+                                historyBefore=list.optJSONObject(0)?.optString("created_at").orEmpty()
+                                if(historyBefore.isBlank()) return@setOnClickListener
+                                historyLoading=true;isEnabled=false
+                                scope.launch {
+                                    try {
+                                        val older=auth.nativeChat(uid,company,kind,target,date,before=historyBefore)
+                                        if(closed || !dialog.isShowing || !valid()) return@launch
+                                        val rows=older.getJSONArray("messages")
+                                        for(i in 0 until list.length()) list.optJSONObject(i)?.let { history[it.getString("id")]=it }
+                                        for(i in 0 until rows.length()) rows.optJSONObject(i)?.let { history[it.getString("id")]=it }
+                                        historyHasOlder=older.optBoolean("hasOlder");historyAnchor=messages.height-scroll.scrollY;lastVersion="";historyLoading=false;refresh()
+                                    } catch(e:CancellationException) { throw e }
+                                      catch(_:Exception) { if(!closed && valid()) toast("이전 대화를 불러오지 못했습니다. 다시 시도해 주세요.") }
+                                    finally { historyLoading=false;isEnabled=true }
+                                }
+                            }
+                        },0)
                         lastVersion=version;firstLoad=false
-                        if(nearBottom) scroll.post { scroll.fullScroll(android.view.View.FOCUS_DOWN) }
+                        val anchor=historyAnchor;historyAnchor=null
+                        if(anchor!=null) scroll.post { scroll.scrollTo(0,(messages.height-anchor).coerceAtLeast(0)) }
+                        else if(nearBottom) scroll.post { scroll.fullScroll(android.view.View.FOCUS_DOWN) }
                     }
                     if(kind=="customer") { handler.removeCallbacks(scanPhotos);scroll.post { handler.post(scanPhotos) } }
                     teamReadReady=kind=="team" && data.optBoolean("readReady")
@@ -355,26 +421,34 @@ internal class NativeChats(
                         }
                     }
                 } catch(e:CancellationException) { throw e }
-                  catch(e:Exception) { if(!closed && dialog.isShowing && valid()) { clearPreviews();messages.removeAllViews();teamViews.clear();latestCustomerView=null;lastVersion="";status.text=e.message ?: "대화를 불러오지 못했습니다. 다시 확인해 주세요." } }
+                  catch(e:Exception) { if(!closed && dialog.isShowing && valid()) { status.text=e.message ?: "대화를 불러오지 못했습니다. 다시 확인해 주세요." } }
                 finally { loading=false;if(pendingRefresh && !closed && dialog.isShowing) { pendingRefresh=false;refresh() } }
             }
         }
         send.setOnClickListener {
             val text=input.text.toString().trim()
-            if(!valid() || sending || text.isBlank() || text.length>2000) return@setOnClickListener
-            if(text!=pendingText || pendingId.isBlank()) { pendingText=text;pendingId=UUID.randomUUID().toString() }
-            val id=pendingId;sending=true;send.isEnabled=false
+            if(!valid() || sending || (text.isBlank() && photoBytes==null) || text.length>2000) return@setOnClickListener
+            if(text!=pendingText || pendingPhotoVersion!=photoVersion || pendingId.isBlank()) { pendingText=text;pendingPhotoVersion=photoVersion;pendingId=UUID.randomUUID().toString() }
+            if(photoBytes==null) drafts.edit().putString(draftKey+":sendId",pendingId).putString(draftKey+":sendText",pendingText).apply()
+            val id=pendingId;val attached=photoBytes;val attachedMime=photoMime;val attachedVersion=photoVersion;sending=true;send.isEnabled=false;photoButton.isEnabled=false
             val payload=if(kind=="customer") JSONObject().put("messageId",id).put("text",text) else JSONObject().put("id",id).put("body",text)
             scope.launch {
                 try {
-                    auth.nativeChat(uid,company,kind,target,date,"POST",payload)
+                    if(attached!=null) auth.sendCustomerPhoto(uid,company,target,id,text,attached,attachedMime)
+                    else auth.nativeChat(uid,company,kind,target,date,"POST",payload)
+                    if(valid() && drafts.getString(draftKey+":sendId","")==id) {
+                        val edit=drafts.edit().remove(draftKey+":sendId").remove(draftKey+":sendText")
+                        if(drafts.getString(draftKey,"").orEmpty().trim()==text) edit.remove(draftKey)
+                        edit.apply()
+                    }
                     if(!closed && dialog.isShowing && valid()) {
                         if(input.text.toString().trim()==text) input.setText("")
+                        if(photoVersion==attachedVersion) { photoBytes=null;photoMime="";photoButton.text="사진 첨부";attachmentPreview.setImageDrawable(null);attachmentPreview.visibility=android.view.View.GONE }
                         pendingId="";pendingText="";firstLoad=true;refresh()
                     }
                 } catch(e:CancellationException) { throw e }
                   catch(e:Exception) { if(!closed && dialog.isShowing && valid()) toast((e.message ?: "전송 결과를 확인하지 못했습니다.")+" 같은 내용을 다시 보내면 중복을 확인합니다.") }
-                finally { sending=false;if(!closed && dialog.isShowing) send.isEnabled=chatAllowed }
+                finally { sending=false;if(!closed && dialog.isShowing) { send.isEnabled=chatAllowed;photoButton.isEnabled=true } }
             }
         }
         startLive=start@{
@@ -397,7 +471,7 @@ internal class NativeChats(
                 }
             }
         }
-        dialog.setOnDismissListener { closed=true;expandedPhoto?.dismiss();expandedPhoto=null;pause();startLive=null;handler.removeCallbacks(markVisible);handler.removeCallbacks(scanPhotos);clearPreviews();if(currentDialog===dialog) currentDialog=null }
+        dialog.setOnDismissListener { closed=true;photoResult=null;expandedPhoto?.dismiss();expandedPhoto=null;pause();startLive=null;handler.removeCallbacks(markVisible);handler.removeCallbacks(scanPhotos);clearPreviews();if(currentDialog===dialog) currentDialog=null }
         dialog.setOnCancelListener { handler.post { if(valid()) onReturn?.invoke() } }
         dialog.setOnShowListener {
             dialog.window?.setLayout(-1,(activity.resources.displayMetrics.heightPixels*0.9).toInt())
