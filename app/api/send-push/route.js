@@ -1235,9 +1235,16 @@ export async function POST(
             const users=await resolveRecipientUserIds(supabase,current.data);
             return users.includes(userId);
           };
+          const siteTarget=siteTargetForNotice(saved.data);
+          let nativeTitle=payload.title;
+          if(siteTarget){
+            const site=await supabase.from('sites').select('site_name').eq('id',siteTarget.siteId).eq('company_id',siteTarget.companyId).maybeSingle();
+            const name=String(site.data?.site_name||'').trim().slice(0,70);
+            if(!site.error&&name&&!nativeTitle.includes(name))nativeTitle=name+' · '+nativeTitle;
+          }
           nativeDelivery=await dispatchAndroidNotice(supabase,{noticeId:notification.id,
-            title:payload.title.slice(0,120),body:payload.body.slice(0,500),recipients:recipientUserIds,
-            ttlSeconds:isCompletionReminder(saved.data)?0:3600,siteTarget:siteTargetForNotice(saved.data)},{allowed});
+            title:nativeTitle.slice(0,120),body:payload.body.slice(0,500),recipients:recipientUserIds,
+            ttlSeconds:isCompletionReminder(saved.data)?0:3600,siteTarget},{allowed});
         }
       }
     } catch { console.error('Native notification dispatch failed'); }

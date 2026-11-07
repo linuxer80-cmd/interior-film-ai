@@ -210,10 +210,18 @@ class MainActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
+        openFollowUpOrigin()
         NotificationInbox.onChanged={ user -> if(account?.userId==user) inboxBadge?.text="알림 ${NotificationInbox.unread(this,user)}" }
         // Refresh the displayed state after returning from system settings.
         if(account!=null) { render();refreshFollowUpCache();ChatPushRegistration.enqueue(applicationContext,replace=true) }
     }
+    private val draftFlushers=mutableSetOf<()->Unit>()
+    override fun onPause() { draftFlushers.toList().forEach { it() };super.onPause() }
+    private fun watchDraft(edit:EditText,save:()->Unit) { edit.addTextChangedListener(object:android.text.TextWatcher {
+        override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+        override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { save() }
+        override fun afterTextChanged(s:android.text.Editable?) {}
+    }) }
     override fun onStop() {
         NotificationInbox.onChanged=null
         active = false; activeNativeChats?.pause();handler.removeCallbacks(handlerScan)
@@ -221,7 +229,7 @@ class MainActivity : Activity() {
         super.onStop()
     }
     override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent);setIntent(intent);NotificationInbox.opened(this,intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice()
+        super.onNewIntent(intent);setIntent(intent);NotificationInbox.opened(this,intent);captureReview(intent);captureSchedule(intent);captureChatPush(intent);captureSiteNotice(intent);maybeReview();maybeScheduleReview();maybeOpenChatPush();maybeOpenSiteNotice();openFollowUpOrigin()
         if(intent.getBooleanExtra("oauth_complete",false)) { intent.removeExtra("oauth_complete");restoreLogin() }
     }
     override fun onDestroy() { detachResults(); scope.cancel(); super.onDestroy() }
@@ -919,6 +927,19 @@ class MainActivity : Activity() {
     private var homeInput=""
     private var displayedHomeConsultationId: String? = null
     private var dailyExpanded=false
+    private fun openFollowUpOrigin() {
+        val expected=intent.getStringExtra("follow_origin_user") ?: return
+        val current=account ?: return
+        val companyId=intent.getStringExtra("follow_origin_company").orEmpty()
+        val record=intent.getStringExtra("follow_origin_record").orEmpty();val site=intent.getStringExtra("follow_origin_site").orEmpty()
+        listOf("user","company","record","site").forEach { intent.removeExtra("follow_origin_$it") }
+        if(current.userId!=expected || selectedCompany()?.id!=companyId || selectedCompany()?.role!="관리자") { message("상담을 관리하던 계정과 업체를 확인해 주세요.");return }
+        settingsOpen=false
+        if(record.isNotBlank()) {
+            if(recordById(record)?.optString("chat_company")!=companyId) { message("이 휴대폰에서 원래 상담을 찾지 못했습니다.");return }
+            showRegistrationConfirmation(record)
+        } else if(Regex("^[0-9a-fA-F-]{36}$").matches(site)) { chatId=null;lookupSites(AssistantRequests.Request("detail"),site) }
+    }
     private var followUpRefreshBusy=false
     private fun refreshFollowUpCache() {
         val user=account?.userId ?: return
@@ -1059,6 +1080,7 @@ class MainActivity : Activity() {
             val epoch=sessionEpoch
             scope.launch { try {
                 val body=JSONObject().put("id",cloudId).put("companyId",company.id).put("title",followUpName(item).take(200)).put("revision",item.optInt("follow_up_revision",0)).put("stage",follow.getString("stage")).put("action",follow.getString("action")).put("date",normalized)
+                if(item.optString("site_id").isNotBlank())body.put("siteId",item.getString("site_id"))
                 val result=auth.businessTools(user,company.id,"/api/admin/consultation-follow-ups?companyId=${company.id}",body).getJSONObject("item")
                 if(epoch!=sessionEpoch || selectedCompany()?.id!=company.id) return@launch
                 if(changeRecord(id) { it.put("follow_up",follow).put("follow_up_revision",result.getInt("revision")) }) { dialog.dismiss();visibleConversationKey=null;render();message("상담 진행을 앱과 웹에 저장했습니다.") }
@@ -1502,10 +1524,10 @@ class MainActivity : Activity() {
         val fields=mapOf("kind" to "notice", "recipient_id" to (intent?.getStringExtra("site_notice_user") ?: ""),
             "company_id" to (intent?.getStringExtra("site_notice_company") ?: ""),
             "site_id" to (intent?.getStringExtra("site_notice_site") ?: ""),
-            "notice_id" to (intent?.getStringExtra("site_notice_id") ?: ""))
+            "notice_id" to (intent?.getStringExtra("site_notice_id") ?: ""),"site_action" to (intent?.getStringExtra("site_notice_action") ?: "detail"))
         val target=SiteNoticeTarget.parse(fields) ?: return
         pendingSiteNotice=target
-        listOf("user","company","site","id").forEach { intent?.removeExtra("site_notice_$it") }
+        listOf("user","company","site","id","action").forEach { intent?.removeExtra("site_notice_$it") }
     }
     private fun maybeOpenSiteNotice() {
         val target=pendingSiteNotice ?: return
@@ -1524,6 +1546,10 @@ class MainActivity : Activity() {
                 if(epoch!=sessionEpoch || account?.userId!=current.userId) return@launch
                 if(!active) { pendingSiteNotice=verified;return@launch }
                 if(site==null) { message("현장 배정이나 접근 권한이 변경되어 확인할 수 없습니다.");return@launch }
+                if(verified.action=="report") {
+                    if(!prefs.edit().putString("selected_company",company.id).commit()) { message("업체 선택을 저장하지 못했습니다.");return@launch }
+                    chatId=null;settingsOpen=false;openSiteAction(company.id,verified.site,"report");return@launch
+                }
                 fun value(key:String)=site.optString(key).takeUnless { it.isBlank() || it=="null" }.orEmpty()
                 val address=listOf(value("address"),value("address_detail")).filter { it.isNotBlank() }.joinToString(" ")
                 val dates=site.optJSONArray("work_dates") ?: JSONArray()
@@ -3348,12 +3374,36 @@ class MainActivity : Activity() {
             }
         } };dialog.show()
     }
-    private fun showNativeQuote(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
+    private fun showNativeQuote(uid:String,company:CompanyAccess,siteId:String,result:JSONObject,resume:Boolean=false) {
         val source=result.optJSONObject("document") ?: return
         val revision=result.optInt("revision",-1)
         if(revision<0) { message("견적서 버전을 확인하지 못했습니다.");return }
-        val doc=JSONObject(source.toString())
+        val draftPrefs=prefs;val draftKey="quote_form_${company.id}_$siteId"
+        val saved=runCatching { JSONObject(draftPrefs.getString(draftKey,null) ?: "{}") }.getOrDefault(JSONObject())
+        if(!resume && saved.optJSONObject("document")!=null) {
+            val stale=saved.optInt("revision",-1)!=revision
+            val view=TextView(this).apply { text=QuoteDocument.text(saved.getJSONObject("document"));setTextIsSelectable(true);setPadding(dp(18),dp(12),dp(18),dp(12)) }
+            AlertDialog.Builder(this).setTitle(if(stale) "서버에서 견적서가 변경됐습니다" else "작성 중인 견적서가 있습니다")
+                .setMessage(if(stale) "아래 임시 내용을 확인·복사할 수 있습니다. 오래된 내용으로 덮어쓰지 않도록 서버 견적서를 먼저 열어 주세요." else "이 휴대폰에 보관한 내용을 이어서 작성할 수 있습니다.")
+                .setView(ScrollView(this).apply { addView(view) })
+                .setPositiveButton(if(stale) "서버 견적서 열기" else "이어서 작성") { _,_->
+                    if(account?.userId!=uid || selectedCompany()?.id!=company.id) return@setPositiveButton
+                    if(stale) draftPrefs.edit().putString(draftKey+"_previous",saved.toString()).remove(draftKey).commit()
+                    showNativeQuote(uid,company,siteId,result,true)
+                }.setNeutralButton("임시 내용 버리기") { _,_->
+                    if(account?.userId==uid && selectedCompany()?.id==company.id) { draftPrefs.edit().remove(draftKey).commit();showNativeQuote(uid,company,siteId,result,true) }
+                }.setNegativeButton("닫기",null).show();return
+        }
+        val doc=if(resume && saved.optInt("revision",-1)==revision && saved.optJSONObject("document")!=null) JSONObject(saved.getJSONObject("document").toString()) else JSONObject(source.toString())
+        var finished=false;var changed=false;var draftSave:()->Unit={}
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(8)) }
+        form.addView(text("입력 내용은 이 휴대폰에 임시 보관됩니다. 서버에는 ‘저장’ 후 반영됩니다.",13f))
+        draftPrefs.getString(draftKey+"_previous",null)?.let { old->form.addView(Button(this).apply { text="이전 임시 내용 확인 · 복사";setOnClickListener {
+            val value=runCatching { QuoteDocument.text(JSONObject(old).getJSONObject("document")) }.getOrDefault("임시 내용을 읽지 못했습니다.")
+            val preview=TextView(this@MainActivity).apply { text=value;setTextIsSelectable(true);setPadding(dp(18),dp(12),dp(18),dp(12)) }
+            AlertDialog.Builder(this@MainActivity).setTitle("이전 임시 내용").setView(ScrollView(this@MainActivity).apply { addView(preview) }).setPositiveButton("닫기",null).show()
+        } }) }
+
         fun input(hintText:String,value:String,multiline:Boolean=false):EditText = EditText(this).apply {
             hint=hintText;setText(value);filters=arrayOf(android.text.InputFilter.LengthFilter(2000));if(!multiline) setSingleLine()
         }
@@ -3377,15 +3427,36 @@ class MainActivity : Activity() {
         fun addItem(item:JSONObject) {
             val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(8),dp(8),dp(8)) }
             val edit=keys.mapIndexed { i,key -> input(names[i],item.optString(key).takeUnless { it=="null" }.orEmpty()).apply { if(key=="quantity" || key=="unit_price") inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL;box.addView(this) } }
-            itemInputs.add(edit)
-            box.addView(Button(this).apply { text="이 항목 삭제";setOnClickListener { itemInputs.remove(edit);rows.removeView(box) } })
+            itemInputs.add(edit);edit.forEach { watchDraft(it) { draftSave() } }
+            box.addView(Button(this).apply { text="이 항목 삭제";setOnClickListener { itemInputs.remove(edit);rows.removeView(box);draftSave() } })
             rows.addView(box)
         }
         val existing=doc.optJSONArray("items") ?: JSONArray()
         for(i in 0 until existing.length()) existing.optJSONObject(i)?.let { addItem(it) }
-        form.addView(Button(this).apply { text="견적 항목 추가";setOnClickListener { if(itemInputs.size>=60) message("견적 항목은 최대 60개입니다.") else addItem(JSONObject()) } })
+        form.addView(Button(this).apply { text="견적 항목 추가";setOnClickListener { if(itemInputs.size>=60) message("견적 항목은 최대 60개입니다.") else { addItem(JSONObject());draftSave() } } })
+        fun snapshot():JSONObject {
+            val copy=JSONObject(doc.toString());fields.forEach { (key,_) -> copy.put(key,inputs.getValue(key).text.toString().trim()) }
+            val items=JSONArray();itemInputs.forEach { edit->val row=JSONObject();keys.forEachIndexed { i,key->row.put(key,edit[i].text.toString().trim()) };items.put(row) }
+            return copy.put("items",items).put("vat",vatValues[vat.selectedItemPosition])
+        }
+        val status=text("서버에 저장하기 전입니다.",12f);form.addView(status)
+        val saveTask=Runnable {
+            if(!finished && changed && account?.userId==uid && selectedCompany()?.id==company.id) {
+                draftPrefs.edit().putString(draftKey,JSONObject().put("revision",revision).put("document",snapshot()).toString()).apply()
+                status.text="이 휴대폰에 임시 보관됨 · 서버 미저장"
+            }
+        }
+        draftSave={ changed=true;handler.removeCallbacks(saveTask);handler.postDelayed(saveTask,250) }
+        val flush:()->Unit={handler.removeCallbacks(saveTask);saveTask.run()};draftFlushers.add(flush)
+        inputs.values.forEach { watchDraft(it) { draftSave() } }
+        var initialVat=true
+        vat.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:View?,position:Int,id:Long) { if(initialVat)initialVat=false else draftSave() }
+            override fun onNothingSelected(parent:android.widget.AdapterView<*>?) {}
+        }
         val dialog=AlertDialog.Builder(this).setTitle("상담 견적서 작성").setMessage("입력 내용을 확인한 뒤 저장합니다.")
-            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장 내용 확인",null).setNegativeButton("닫기",null).create()
+            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장 내용 확인",null).setNegativeButton("임시 보관 후 닫기",null).create()
+        dialog.setOnDismissListener { flush();draftFlushers.remove(flush);if(changed && !finished && account?.userId==uid)message("작성 중인 견적서를 임시 보관했습니다.") }
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
             fields.forEach { (key,_) -> doc.put(key,inputs.getValue(key).text.toString().trim()) }
@@ -3408,7 +3479,10 @@ class MainActivity : Activity() {
                         try {
                             if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") return@launch
                             auth.assistantQuote(uid,company.id,siteId,payload,revision)
-                            if(epoch==sessionEpoch) { dialog.dismiss();message("견적서를 저장했습니다.") }
+                            if(epoch==sessionEpoch) {
+                                if(snapshot().toString()==payload.toString()) { finished=true;handler.removeCallbacks(saveTask);draftPrefs.edit().remove(draftKey).apply();dialog.dismiss();message("견적서를 저장했습니다.") }
+                                else { flush();dialog.dismiss();message("저장 요청 후 추가로 입력한 내용은 임시 보관했습니다. 견적서를 다시 열어 확인해 주세요.") }
+                            }
                         } catch(e:CancellationException) { throw e }
                           catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "견적서를 저장하지 못했습니다.") }
                         finally { workerActionBusy=false }
@@ -3522,14 +3596,19 @@ class MainActivity : Activity() {
         val categories=arrayOf("주차비","식비","유류비","통행료")
         AlertDialog.Builder(this).setTitle("$siteName · 경비 종류").setItems(categories) { _,index ->
             if(!nativeSiteSelectionValid(uid,company,siteId)) { message("현장과 계정을 다시 확인해 주세요.");return@setItems }
-            val amount=EditText(this).apply { hint="금액 (원)";inputType=InputType.TYPE_CLASS_NUMBER;filters=arrayOf(android.text.InputFilter.LengthFilter(9)) }
-            val dialog=AlertDialog.Builder(this).setTitle("${categories[index]} 입력").setMessage("오늘 지출한 금액을 입력해 주세요. 저장 전 내용을 다시 확인합니다.").setView(amount)
+            val draftPrefs=prefs;val draftKey="expense_form_${company.id}_${siteId}_${categories[index]}_${ScheduleDates.today()}"
+            val amount=EditText(this).apply { hint="금액 (원)";inputType=InputType.TYPE_CLASS_NUMBER;filters=arrayOf(android.text.InputFilter.LengthFilter(9));setText(draftPrefs.getString(draftKey,"")) }
+            watchDraft(amount) { if(nativeSiteSelectionValid(uid,company,siteId))draftPrefs.edit().putString(draftKey,amount.text.toString()).apply() }
+
+            val dialog=AlertDialog.Builder(this).setTitle("${categories[index]} 입력").setMessage("오늘 지출한 금액을 입력해 주세요. 작성 중인 금액은 이 휴대폰에 보관하며, 확인 후 저장합니다.").setView(amount)
                 .setPositiveButton("확인",null).setNegativeButton("취소",null).create()
             dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 if(!nativeSiteSelectionValid(uid,company,siteId)) { dialog.dismiss();message("현장과 계정을 다시 확인해 주세요.");return@setOnClickListener }
                 val value=amount.text.toString().toLongOrNull()
                 if(value==null || value !in 1..100000000L) { message("1원부터 1억원까지 입력해 주세요.");return@setOnClickListener }
                 dialog.dismiss();answerHome("${categories[index]} ${value}원")
+                val pending=runCatching { JSONObject(prefs.getString("chat_expense_pending","{}")!!) }.getOrDefault(JSONObject())
+                if(pending.optString("siteId")==siteId && pending.optLong("amount")==value && pending.optString("label")==categories[index]) draftPrefs.edit().remove(draftKey).apply()
             } };dialog.show()
         }.setNegativeButton("닫기",null).show()
     }
@@ -4057,7 +4136,10 @@ class MainActivity : Activity() {
                 gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(48);setPadding(dp(14),0,dp(14),0)
                 isClickable=true;isFocusable=true
                 setOnClickListener { AlertDialog.Builder(this@MainActivity).setTitle("상담 후 할 일")
-                    .setItems(arrayOf("내가 처리할 상담 ${followups.size-waiting}","고객 답변 대기 $waiting")) { _,which -> showFollowUps(which==1) }
+                    .setItems(arrayOf("오늘까지 연락할 상담 · 앱·웹","내가 처리할 상담 ${followups.size-waiting}","고객 답변 대기 $waiting")) { _,which ->
+                        if(which==0) { val uid=account?.userId;val company=selectedCompany();if(uid!=null && company?.role=="관리자" && prefs.edit().putString("selected_company",company.id).commit())startActivity(Intent(this@MainActivity,BusinessToolsActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("mode","follow-ups").putExtra("filter","due")) }
+                        else showFollowUps(which==2)
+                    }
                     .setNegativeButton("닫기",null).show() }
             },LinearLayout.LayoutParams(-1,-2))
         }

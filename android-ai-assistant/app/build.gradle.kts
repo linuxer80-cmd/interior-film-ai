@@ -19,8 +19,8 @@ android {
         minSdk = 31
         targetSdk = 36
         // CI supplies a monotonically increasing value; set it explicitly for local releases.
-        versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 20063
-        versionName = "0.6.63"
+        versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 20064
+        versionName = "0.6.64"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

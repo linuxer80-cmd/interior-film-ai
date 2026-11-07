@@ -57,25 +57,34 @@ internal object AssistantResultViews {
             if(horizontal) card.addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled=true;addView(grid) }) else card.addView(grid)
         }
         if(kind=="detail") {
-            val fields=result.optJSONArray("fields") ?: JSONArray()
-            table(listOf("항목","내용"),listOf(1,3),(0 until fields.length()).mapNotNull { fields.optJSONArray(it) }.map { listOf(it.optString(0),it.optString(1)) to "" },false)
+            val ui=BusinessUi(context);val fields=result.optJSONArray("fields") ?: JSONArray()
+            val entries=(0 until fields.length()).mapNotNull { fields.optJSONArray(it) }
+            fun field(name:String)=entries.find { it.optString(0)==name }?.optString(1).orEmpty()
+            ui.badge(card,field("상태").ifBlank { "상태 확인 필요" })
+            val date=field("시공일").takeUnless { it.isBlank() || it=="미등록" } ?: field("시공 기간")
+            card.addView(label("시공일 · $date",14f,true))
+            card.addView(label("주소 · "+field("주소")))
+            card.addView(label("고객 · "+field("고객")+"  /  "+field("연락처")))
             val siteId=result.optString("site_id")
             if((workerActions || ownerActions) && siteId.isNotBlank()) {
-                card.addView(label("이 현장에서 할 일",16f,true))
-                val actions=mutableListOf("전화 걸기" to "phone","길 안내" to "navigate","현장 사진 보기" to "gallery")
-                actions.add("오늘 현장 팀 채팅" to "team_chat")
-                if(workerActions || ownerActions) actions.addAll(listOf("자재 준비 현황" to "materials","필름 사용량 · 자재" to "film","경비 입력" to "expenses",(if(ownerActions) "완료보고 확인 · 승인" else "완료보고 확인 · 작성") to "report"))
-                if(workerActions) actions.add("현장 업무 전체 (웹앱)" to "all")
-                if(ownerActions) actions.addAll(listOf("현장 기본정보 수정" to "info","전체 업무 (웹)" to "all","상담 견적서 작성" to "quote","일정 · 시공자 배정" to "schedule"))
-                actions.forEach { (title,section) ->
-                    card.addView(Button(context).apply {
-                        text=title;textSize=15f;isAllCaps=false;minHeight=dp(48)
-                        setTextColor(if(section=="report") Color.WHITE else ink)
-                        background=GradientDrawable().apply { setColor(if(section=="report") Color.rgb(48,91,69) else green);cornerRadius=dp(12).toFloat() }
-                        setOnClickListener { onAction(siteId,section) }
-                    },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(6),dp(6),dp(4)) })
+                val quick=LinearLayout(context)
+                listOf("전화" to "phone","길 안내" to "navigate","팀 채팅" to "team_chat").forEach { (title,section)->
+                    quick.addView(ui.button(title).apply { minWidth=0;minimumWidth=0;setOnClickListener { onAction(siteId,section) } },LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(8),dp(3),dp(8)) })
+                };card.addView(quick)
+                val tabs=LinearLayout(context);val panel=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL }
+                card.addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled=false;addView(tabs) });card.addView(panel)
+                val groups=linkedMapOf("기본" to listOf("현장 사진" to "gallery",(if(ownerActions) "기본정보 수정" else "현장 업무 전체 (웹)") to if(ownerActions) "info" else "all"))
+                if(ownerActions)groups["견적·일정"]=listOf("견적서 작성 · PDF" to "quote","일정 · 시공자 배정" to "schedule")
+                groups["자재"]=listOf("자재 준비 현황" to "materials","필름 사용량 · 자재" to "film")
+                groups["보고·경비"]=listOf((if(ownerActions) "완료보고 확인 · 승인" else "완료보고 확인 · 작성") to "report","경비 입력" to "expenses")
+                fun select(name:String) {
+                    panel.removeAllViews()
+                    for(i in 0 until tabs.childCount) { val b=tabs.getChildAt(i) as Button;b.isSelected=b.text.toString()==name;b.alpha=if(b.isSelected)1f else 0.65f;b.contentDescription=b.text.toString()+if(b.isSelected)" · 선택됨" else "" }
+                    if(name=="기본")panel.addView(label("시공 내용\n"+field("시공 내용")))
+                    groups.getValue(name).forEach { (title,section)->panel.addView(ui.button(title,section=="report"||section=="quote").apply { setOnClickListener { onAction(siteId,section) } },LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(6),dp(6),dp(6),dp(4)) }) }
                 }
-                card.addView(label("필름 사용량, 경비, 현장 기본정보와 상담 견적서는 앱에서 입력합니다. 시공자의 지정 자재 신규 완료보고를 앱에서 제출할 수 있으며, 일부 보고서는 필름장이 화면에서 처리합니다.",12f).apply { setTextColor(muted) })
+                groups.keys.forEach { name->tabs.addView(ui.button(name).apply { setOnClickListener { select(name) } },LinearLayout.LayoutParams(-2,-2).apply { marginEnd=dp(6) }) }
+                select("기본")
             }
             return card
         }
@@ -140,7 +149,7 @@ internal object AssistantResultViews {
                 if(id.isNotBlank()) {
                     item.isClickable=true;item.contentDescription="$name 현장 상세 보기";item.setOnClickListener { onSite(id) }
                     val actions=LinearLayout(context)
-                    listOf("전화" to "phone","길 안내" to "navigate","팀 채팅" to "team_chat").forEach { (title,action) ->
+                    listOf("전화" to "phone","길 안내" to "navigate",(if(ownerActions) "견적" else "팀 채팅") to if(ownerActions) "quote" else "team_chat").forEach { (title,action) ->
                         actions.addView(Button(context).apply {
                             text=title;textSize=13f;isAllCaps=false;minWidth=0;minimumWidth=0;minHeight=dp(48);setPadding(dp(4),0,dp(4),0)
                             setTextColor(ink);background=GradientDrawable().apply { setColor(Color.WHITE);cornerRadius=dp(10).toFloat();setStroke(dp(1),Color.rgb(218,226,220)) }

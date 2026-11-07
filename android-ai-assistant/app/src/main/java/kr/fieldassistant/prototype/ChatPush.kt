@@ -96,7 +96,7 @@ class ChatPushService:FirebaseMessagingService() {
             this.data=Uri.parse("fieldassistant://app-notification/$id")
             siteTarget?.let { target ->
                 putExtra("site_notice_user",target.user);putExtra("site_notice_company",target.company)
-                putExtra("site_notice_site",target.site);putExtra("site_notice_id",target.notice)
+                putExtra("site_notice_site",target.site);putExtra("site_notice_id",target.notice);putExtra("site_notice_action",target.action)
             }
         }
         NotificationInbox.record(this,user,"notice-$id","notice",title,text,intent,"notice-$id",0)
