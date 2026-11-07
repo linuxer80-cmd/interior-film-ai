@@ -3263,16 +3263,16 @@ class MainActivity : Activity() {
             reportVoiceRequest=ReportVoiceRequest(uid,company.id,siteId,inputs[1],inputs[2],company.role)
             try { startActivityForResult(speech,1007) } catch(_:ActivityNotFoundException) { reportVoiceRequest=null;message("음성 입력 앱을 찾지 못했습니다.") }
         }
-        val dialog=AlertDialog.Builder(this).setTitle("완료보고 내용 임시 저장")
+        val dialog=AlertDialog.Builder(this).setTitle("완료보고 작성")
             .setMessage((if(previous!=null) "임시 저장한 내용이 없으면 반려된 보고서 내용을 불러옵니다.\n\n" else "")+"입력한 내용은 이 휴대전화에만 저장됩니다. 아직 완료보고가 제출되지 않으며, 사진·자재·경비·인건비는 이 화면에서 등록되지 않습니다.")
-            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("임시 저장",null).setNegativeButton("취소",null)
+            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장하고 다음",null).setNegativeButton("취소",null)
             .setNeutralButton("내용 복사",null).create()
         dialog.setOnDismissListener { if(reportVoiceRequest?.input==inputs[1]) reportVoiceRequest=null }
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@setOnClickListener }
             val edit=prefs.edit();keys.forEachIndexed { i,key -> edit.putString(prefix+key,inputs[i].text.toString()) }
             if(!edit.commit()) { message("임시 내용을 저장하지 못했습니다.");return@setOnClickListener }
-            dialog.dismiss();message("완료보고 내용을 이 휴대전화에 임시 저장했습니다. 보고서는 아직 제출되지 않았습니다.")
+            dialog.dismiss();openSiteAction(company.id,siteId,"report")
         };dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
             val text=keys.indices.map { i -> labels[i]+": "+inputs[i].text.toString().trim() }.joinToString("\n")
             (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("완료보고 임시 내용",text))
@@ -4199,44 +4199,7 @@ class MainActivity : Activity() {
         val scroll=ScrollView(this)
         val pinnedCompany=selectedCompany();val pinnedUser=account?.userId
         val pinned=dailyState?.takeIf { it.uid==pinnedUser && it.company==pinnedCompany?.id && it.role==pinnedCompany?.role && it.date==ScheduleDates.today() }
-        val pinnedLabel=when {
-            pinned?.loading==true -> "오늘 현장 확인 중…"
-            pinned?.error==true -> "오늘 현장을 확인하지 못했습니다 · 다시 확인"
-            pinned?.data!=null && pinned.data.sites.isEmpty() -> "오늘 예정된 현장이 없습니다"
-            pinned?.data!=null -> {
-                val sites=pinned.data.sites
-                "오늘 현장 ${sites.size}건 · ${sites.first().name}"+(if(sites.size>1) " 외 ${sites.size-1}곳" else "")
-            }
-            else -> "오늘 현장 확인하기"
-        }
-        val todayBar=text(pinnedLabel+if(dailyExpanded) "  ▴" else "  ›",14f,true).apply {
-            gravity=Gravity.CENTER_VERTICAL;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END
-            setPadding(dp(14),0,dp(14),0);background=bg(Color.WHITE,14,Color.rgb(225,229,220))
-            contentDescription=pinnedLabel+if(dailyExpanded) ", 접기" else ", 자세히 보기"
-            isClickable=true;isFocusable=true
-            setOnClickListener {
-                dailyExpanded=!dailyExpanded
-                if(dailyExpanded && (pinned==null || pinned.error)) loadDailyAssistant(true)
-                openDailyOnReady=dailyExpanded
-                render()
-            }
-        }
-        page.addView(todayBar,LinearLayout.LayoutParams(-1,dp(48)).apply { setMargins(0,dp(6),0,0) })
         val isOwner=pinnedCompany?.role=="관리자"
-        if(isOwner) {
-            val followups=followUpItems();val waiting=followups.count { ConsultationFollowUp.waiting(it,ScheduleDates.today()) }
-            page.addView(text("처리할 상담 ${followups.size-waiting} · 답변 대기 $waiting  ›",13f,true).apply {
-                gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(48);setPadding(dp(14),0,dp(14),0)
-                isClickable=true;isFocusable=true
-                setOnClickListener { AlertDialog.Builder(this@MainActivity).setTitle("상담 후 할 일")
-                    .setItems(arrayOf("오늘까지 연락할 상담 · 앱·웹","내가 처리할 상담 ${followups.size-waiting}","고객 답변 대기 $waiting")) { _,which ->
-                        if(which==0) { val uid=account?.userId;val company=selectedCompany();if(uid!=null && company?.role=="관리자" && prefs.edit().putString("selected_company",company.id).commit())startActivity(Intent(this@MainActivity,BusinessToolsActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("mode","follow-ups").putExtra("filter","due")) }
-                        else showFollowUps(which==2)
-                    }
-                    .setNegativeButton("닫기",null).show() }
-            },LinearLayout.LayoutParams(-1,-2))
-        }
-
         val quickRow=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         fun quick(label:String,icon:Int,action:()->Unit) {
             val item=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;isClickable=true;isFocusable=true;contentDescription=label;setPadding(dp(4),dp(10),dp(4),dp(10));background=bg(Color.WHITE,16,Color.rgb(230,232,222)) }
@@ -4249,15 +4212,10 @@ class MainActivity : Activity() {
         quick(if(isOwner) "현장 등록" else "현장 찾기",android.R.drawable.ic_menu_add) {
             if(isOwner) openNativeFeature("new-site") else lookupSites(AssistantRequests.Request("sites"))
         }
-        quick("오늘 일정",android.R.drawable.ic_menu_today) {
-            dailyExpanded=true;openDailyOnReady=true
-            if(pinned==null || pinned.error) loadDailyAssistant(true)
-            render()
-        }
         quick(if(isOwner) "고객 채팅" else "팀 채팅",android.R.drawable.ic_dialog_email) {
             if(isOwner) openCustomerChats() else openTodayTeamChats()
         }
-        quick("샘플 검색",android.R.drawable.ic_menu_search) { openNativeFeature("samples") }
+        quick(if(isOwner) "상담 관리" else "샘플 검색",android.R.drawable.ic_menu_search) { openNativeFeature(if(isOwner) "follow-ups" else "samples") }
         homeQuickActions=quickRow
         page.addView(quickRow)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(12),dp(8),dp(20)) }
@@ -4267,15 +4225,13 @@ class MainActivity : Activity() {
         if(company!=null && uid!=null) {
             val tasks=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
             tasks.addView(text("오늘 업무 브리핑",18f,true))
-            if(state?.data!=null) DailyAssistant.highlights(state.data).forEach { tasks.addView(text(it,14f)) }
+            if(state?.data!=null) DailyAssistant.highlights(state.data).take(if(dailyExpanded) 3 else 1).forEach { tasks.addView(text(it,14f)) }
             else tasks.addView(text(if(state?.error==true) "브리핑을 불러오지 못했습니다. 다시 확인해 주세요." else "오늘 업무를 확인하고 있습니다.",14f))
-            addButton(tasks,"브리핑 새로 확인",false) { lookupBriefing(AssistantRequests.Request("briefing")) }
-            if(company.role=="관리자") {
-                addButton(tasks,"연락할 상담 확인",true) { startActivity(Intent(this,BusinessToolsActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("mode","follow-ups").putExtra("filter","due")) }
-                addButton(tasks,"고객 메시지 확인",false) { openCustomerChats() }
-            } else addButton(tasks,"오늘 현장 팀 채팅",true) { openTodayTeamChats() }
-            addButton(tasks,if(dailyExpanded) "오늘 현장 접기" else "오늘 현장 · 준비할 일 보기",false) { dailyExpanded=!dailyExpanded;openDailyOnReady=dailyExpanded;if(state==null||state.error)loadDailyAssistant(true);render() }
-            tasks.addView(text("목록을 열면 최신 상태를 확인합니다.",12f,false,Color.rgb(89,111,96)))
+            addButton(tasks,if(dailyExpanded) "상세 접기" else "오늘 할 일 보기",false) {
+                dailyExpanded=!dailyExpanded;openDailyOnReady=dailyExpanded
+                if(dailyExpanded && (state==null || state.error)) loadDailyAssistant(true)
+                render()
+            }
             body.addView(tasks,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
         }
         if(dailyExpanded && company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
