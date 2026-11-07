@@ -5,16 +5,16 @@ import vm from 'node:vm';
 import {assignmentChanges,applyTeamToDates} from '../lib/assignmentReview.mjs';
 const site='10000000-0000-0000-0000-000000000001',worker='10000000-0000-0000-0000-000000000002',other='10000000-0000-0000-0000-000000000003';
 const source=fs.readFileSync(new URL('../app/api/site-daily-assignments/route.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replaceAll('export ','');
-function fixture({role='owner',foreign=false,broken=false}={}) {
- const rows={profiles:[{id:'u',role,company_id:'c',is_active:true}],companies:[{id:'c',is_active:true}],sites:[{id:site,company_id:foreign?'other':'c',status:'scheduled',work_dates:['2026-10-22']}],workers:[{id:worker,company_id:'c',is_active:true,user_id:'person',name:'김시공',daily_wage:0},{id:other,company_id:'other',is_active:true,user_id:'person'}],worker_relationships:[{worker_id:worker,company_id:'c',relationship_type:'employee',ended_at:null}],site_daily_assignments:[{id:'other-assignment',site_id:'other-site',company_id:'other',worker_id:other,work_date:'2026-10-22',role:'leader'}],labor_profiles:[]};
- let writes=0;
- const db={auth:{getUser:async()=>({data:{user:{id:'u'}}})},rpc:async()=>{writes++;return {error:{code:'XX000'}};},from(table){let checks=[],start=0,end=Infinity,single=false;const q={select(){return q;},eq(key,value){checks.push(row=>row[key]===value);return q;},in(key,values){checks.push(row=>values.includes(row[key]));return q;},is(key,value){checks.push(row=>row[key]===value);return q;},order(){return q;},range(a,b){start=a;end=b+1;return q;},limit(n){end=n;return q;},maybeSingle(){single=true;return q;},then(resolve,reject){if(broken&&table==='workers')return Promise.resolve({error:{code:'unavailable'}}).then(resolve,reject);const result=(rows[table]||[]).filter(row=>checks.every(check=>check(row))).slice(start,end);return Promise.resolve({data:single?result[0]||null:result}).then(resolve,reject);}};return q;}};
+function fixture({role='owner',foreign=false,broken=false,status='scheduled'}={}) {
+ const rows={profiles:[{id:'u',role,company_id:'c',is_active:true}],companies:[{id:'c',is_active:true}],sites:[{id:site,company_id:foreign?'other':'c',status,work_dates:['2026-10-22']}],workers:[{id:worker,company_id:'c',is_active:true,user_id:'person',name:'김시공',daily_wage:0},{id:other,company_id:'other',is_active:true,user_id:'person'}],worker_relationships:[{worker_id:worker,company_id:'c',relationship_type:'employee',ended_at:null}],site_daily_assignments:[{id:'other-assignment',site_id:'other-site',company_id:'other',worker_id:other,work_date:'2026-10-22',role:'leader'}],labor_profiles:[]};
+ let writes=0;let correctionCalls=[];
+ const db={auth:{getUser:async()=>({data:{user:{id:'u'}}})},rpc:async(name,args)=>{if(name==='correct_completed_assignments'){correctionCalls.push(args);return {data:{expected:[],beforeCost:0,afterCost:250000,unknownRates:0}};}writes++;return {error:{code:'XX000'}};},from(table){let checks=[],start=0,end=Infinity,single=false;const q={select(){return q;},eq(key,value){checks.push(row=>row[key]===value);return q;},in(key,values){checks.push(row=>values.includes(row[key]));return q;},is(key,value){checks.push(row=>row[key]===value);return q;},order(){return q;},range(a,b){start=a;end=b+1;return q;},limit(n){end=n;return q;},maybeSingle(){single=true;return q;},then(resolve,reject){if(broken&&table==='workers')return Promise.resolve({error:{code:'unavailable'}}).then(resolve,reject);const result=(rows[table]||[]).filter(row=>checks.every(check=>check(row))).slice(start,end);return Promise.resolve({data:single?result[0]||null:result}).then(resolve,reject);}};return q;}};
  const ctx=vm.createContext({createClient:()=>db,Response,Request,URL,process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://example.test',SUPABASE_SERVICE_ROLE_KEY:'test'}},console:{error(){}}});vm.runInContext(source+'\nglobalThis.post=POST;',ctx);
  const wrapper=fs.readFileSync(new URL('../app/api/site-daily-assignments/preview/route.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replaceAll('export ','');
  const previewCtx=vm.createContext({assignmentPost:ctx.post,Request,Response});vm.runInContext(wrapper+'\nglobalThis.preview=POST;',previewCtx);
  const payload={siteId:site,days:[{workDate:'2026-10-22',leaderId:worker,memberIds:[]}]};
  const call=(body=payload,preview=true,token=true)=> (preview?previewCtx.preview:ctx.post)(new Request('https://app.test/api/site-daily-assignments'+(preview?'/preview':''),{method:'POST',headers:{...(token?{authorization:'Bearer test'}:{}),'content-type':'application/json'},body:JSON.stringify(body)}));
- return {call,payload,writes:()=>writes};
+ return {call,payload,writes:()=>writes,correctionCalls};
 }
 test('preview uses real auth, wage and conflict checks but never writes assignments',async()=>{
  const h=fixture();const response=await h.call();assert.equal(response.status,200);const result=await response.json();
@@ -35,4 +35,12 @@ test('bulk apply only changes selected work dates, copies arrays, and never assi
  const result=applyTeamToDates(value,'a',['b','unknown']);assert.deepEqual(result.b,{leaderId:'lead',memberIds:['member']});assert.deepEqual(result.c,value.c);assert.equal(result.unknown,undefined);assert.equal(value.b.leaderId,'old');
  result.b.memberIds.push('new');assert.deepEqual(value.a.memberIds,['lead','member','member']);
  const changes=assignmentChanges(value,result);assert.match(changes.b,/팀장 변경/);assert.match(changes.b,/팀원 2명 추가/);assert.equal(changes.c,undefined);
+});
+
+test('completed correction requires explicit reason, routes preview and save to atomic correction only',async()=>{
+ const h=fixture({status:'completed'});assert.equal((await h.call()).status,409);assert.equal(h.correctionCalls.length,0);
+ const body={...h.payload,correctCompleted:true,correctionReason:'누락 정정',confirmScheduleConflicts:true};
+ const response=await h.call(body);assert.equal(response.status,200);assert.equal((await response.json()).correction.afterCost,250000);assert.equal(h.correctionCalls[0].p_preview,true);
+ assert.equal((await h.call({...body,correctionExpected:[]},false)).status,200);assert.equal(h.correctionCalls[1].p_preview,false);assert.equal(h.writes(),0);
+ const cancelled=fixture({status:'cancelled'});assert.equal((await cancelled.call(body)).status,409);assert.equal(cancelled.correctionCalls.length,0);
 });

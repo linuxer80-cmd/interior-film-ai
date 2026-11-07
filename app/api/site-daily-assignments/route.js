@@ -308,8 +308,14 @@ export async function GET(request) {
       });
     }
 
+    let corrections=[];
+    if(profile.role==="owner" && site.status==="completed") {
+      const history=await db.from("site_assignment_corrections").select("id,actor_id,reason,before_rows,after_rows,created_at").eq("company_id",profile.company_id).eq("site_id",siteId).order("created_at",{ascending:false}).limit(10);
+      if(history.error)throw history.error;corrections=history.data||[];
+    }
     return reply({
       success: true,
+      corrections,
       assignments,
       hasDailySchedule:
         Array.isArray(site.work_dates) || assignments.length > 0,
@@ -369,7 +375,7 @@ export async function POST(request) {
     }
 
     if (
-      ["completed", "cancelled", "canceled"].includes(site.status)
+      ["cancelled", "canceled"].includes(site.status)
     ) {
       return reply(
         {
@@ -379,6 +385,9 @@ export async function POST(request) {
         409
       );
     }
+
+    const correction = site.status === "completed";
+    if(correction && (body.correctCompleted!==true || typeof body.correctionReason!=="string" || body.correctionReason.trim().length<2 || body.correctionReason.trim().length>500)) return reply({error:"배정 정정을 선택하고 정정 사유를 입력해주세요."},409);
 
     const dates = siteDates(site);
     const allowed = new Set(dates);
@@ -558,6 +567,13 @@ export async function POST(request) {
       if(conflict)warnings.push({workerName:person.name,workDate:row.work_date,
         reason:"다른 업체에도 같은 날짜에 배정되어 있습니다."});
     }
+    if(correction) {
+      if(body.preview!==true && warnings.length && body.confirmScheduleConflicts!==true) return reply({error:"일정 중복을 확인해주세요.",warnings,conflictConfirmationRequired:true},409);
+      const {data,error}=await db.rpc("correct_completed_assignments",{p_company_id:profile.company_id,p_site_id:siteId,p_actor_id:auth.user.id,p_rows:rows,p_reason:body.correctionReason.trim(),p_preview:body.preview===true,p_expected:body.correctionExpected ?? null});
+      if(error) return reply({error:error.code==="P0001"?error.message:"배정 정정을 저장하지 못했습니다. 다시 확인해주세요."},error.code==="P0001"?409:500);
+      return reply({success:true,preview:body.preview===true,warnings,pendingWages,missingLeaders:days.filter(day=>!day.leaderId).map(day=>day.workDate),correction:data,message:"완료 현장 배정 정정 저장"});
+    }
+
     // The preview route runs the same authorization and validation, then exits
     // before replacing assignments, creating notifications or syncing calendars.
     if (body.preview === true) return reply({ success:true, preview:true, warnings, pendingWages,

@@ -107,7 +107,7 @@ export default function SiteWorkerAssignment({
   const datesKey = dates.join(",");
   const siteId = site?.id;
   const explicit = Array.isArray(site?.work_dates);
-  const formKey = `${siteId}:${explicit}:${datesKey}`;
+  const formKey = `${siteId}:${site?.status}:${explicit}:${datesKey}`;
 
   const [assignments, setAssignments] = useState({});
   const baseline = useRef({});
@@ -125,6 +125,10 @@ export default function SiteWorkerAssignment({
   const [preview, setPreview] = useState(null);
   const [confirmConflict, setConfirmConflict] = useState(false);
   const [confirmMissing, setConfirmMissing] = useState(false);
+  const [corrections,setCorrections]=useState([]);
+  const [correctionMode,setCorrectionMode]=useState(false);
+  const [correctionReason,setCorrectionReason]=useState("");
+  const completed=site?.status==="completed";
   const checkingRef = useRef(false);
   const reviewPanel = useRef(null);
   useEffect(() => {
@@ -133,6 +137,7 @@ export default function SiteWorkerAssignment({
     return () => cancelAnimationFrame(frame);
   }, [stage]);
   useEffect(() => {
+    setCorrectionMode(false);setCorrectionReason("");
     setOpenDate(datesKey.split(",")[0] || "");
     setTargets(datesKey ? datesKey.split(",") : []);
     setStage("edit"); setPreview(null); setConfirmConflict(false); setConfirmMissing(false);
@@ -150,7 +155,6 @@ export default function SiteWorkerAssignment({
   );
 
   const locked = [
-    "completed",
     "cancelled",
     "canceled",
   ].includes(site?.status);
@@ -160,7 +164,7 @@ export default function SiteWorkerAssignment({
     loading ||
     workersLoading ||
     readyKey !== formKey ||
-    locked;
+    locked || (completed && !correctionMode);
 
   const dirty = readyKey === formKey && assignmentSignature(assignments) !== assignmentSignature(baseline.current);
   useSiteDraft(onDraftState, "assignments", {
@@ -190,6 +194,7 @@ export default function SiteWorkerAssignment({
 
         if (cancelled) return;
 
+        setCorrections(daily.corrections||[]);
         const dailyRows = Array.isArray(daily.assignments)
           ? daily.assignments
           : [];
@@ -264,7 +269,7 @@ export default function SiteWorkerAssignment({
     checkingRef.current = true; setChecking(true); setMessage(""); setPreview(null); setStage("review");
     setConfirmConflict(false); setConfirmMissing(false);
     try {
-      const result = await api("POST",siteId,{siteId,days:payloadDays()},true);
+      const result = await api("POST",siteId,{siteId,days:payloadDays(),correctCompleted:completed&&correctionMode,correctionReason},true);
       if (currentKey.current !== key) return;
       if (result.preview !== true || !Array.isArray(result.warnings) || !Array.isArray(result.pendingWages) || !Array.isArray(result.missingLeaders)) throw Error("저장 전 점검 응답을 확인하지 못했습니다. 다시 점검해주세요.");
       setPreview({signature:assignmentSignature(assignments),result});
@@ -285,11 +290,12 @@ export default function SiteWorkerAssignment({
 
     try {
       const days = payloadDays();
-      const result = await api("POST",siteId,{siteId,days,confirmScheduleConflicts:confirmConflict});
+      const result = await api("POST",siteId,{siteId,days,confirmScheduleConflicts:confirmConflict,correctCompleted:completed&&correctionMode,correctionReason,correctionExpected:preview.result.correction?.expected});
 
       if (currentKey.current !== savedKey) return;
 
       baseline.current = assignments;
+      if(completed) { setCorrectionMode(false);setCorrectionReason("");setRetry(value=>value+1); }
       setStage("edit"); setPreview(null); setConfirmConflict(false); setConfirmMissing(false);
       setMessage([
         "✅ 날짜별 담당자가 저장되었습니다.",
@@ -343,6 +349,8 @@ export default function SiteWorkerAssignment({
   return <section className="assignment" aria-label="날짜별 시공자 배정">
     <div className="heading"><h3>날짜별 시공자 배정</h3><span className="hint">시공일 {dates.length}일</span></div>
     <p className="hint">날짜를 선택해 팀장을 정하고 함께할 팀원을 선택하세요.</p>
+    {completed && <div className="notice"><strong>완료 현장 배정 정정</strong><p>완료 상태와 보고서는 유지됩니다. 배정 변경으로 인건비와 현장 접근 권한이 달라질 수 있습니다.</p>{!correctionMode ? <button type="button" onClick={()=>setCorrectionMode(true)}>배정 정정 시작</button> : <label>정정 사유<input aria-label="정정 사유" maxLength={500} value={correctionReason} disabled={saving||checking} onChange={e=>{setCorrectionReason(e.target.value);setPreview(null);setStage("edit");}} placeholder="예: 실제 작업자 누락 정정" /></label>}</div>}
+    {completed && corrections.length>0 && <details><summary>최근 배정 정정 이력 ({corrections.length}건)</summary>{corrections.map(entry=><div key={entry.id} className="notice"><strong>{entry.reason}</strong><p>{new Date(entry.created_at).toLocaleString("ko-KR",{timeZone:"Asia/Seoul"})}</p>{[["변경 전",entry.before_rows],["변경 후",entry.after_rows]].map(([label,rows])=><p key={label}>{label}: {rows.map(row=>`${row[0]} ${workers.find(w=>w.id===row[1])?.name||"이전 시공자"}(${row[2]==="leader"?"팀장":"팀원"})`).join(" · ")||"배정 없음"}</p>)}</div>)}</details>}
     {locked && <p className="notice">완료되거나 취소된 현장은 배정을 변경할 수 없습니다.</p>}
     {loading || workersLoading ? <p role="status">담당자를 불러오는 중…</p> : !dates.length ? <p>먼저 위에서 시공 날짜를 선택하고 저장해주세요.</p> : readyKey !== formKey ?
       <button type="button" onClick={()=>setRetry(value=>value+1)}>담당자 다시 불러오기</button> : <>
@@ -369,6 +377,7 @@ export default function SiteWorkerAssignment({
         <div className="heading"><h4>저장 전 확인</h4><span className="badge">변경 {Object.keys(changes).length}일</span></div>
         {checking && <p role="status">일정 중복과 새 배정의 일당을 확인하고 있습니다…</p>}
         {dates.map(date=><div key={date} className="reviewDay"><div className="heading"><strong>{dateLabel(date)}</strong><small>{changes[date] || "기존 배정 유지"}</small></div><p>팀장 {assignments[date]?.leaderId ? workerName(assignments[date].leaderId) : "미배정"}</p><p className="hint">팀원 {(assignments[date]?.memberIds || []).map(workerName).join(" · ") || "없음"}</p></div>)}
+        {preview?.result.correction && <div className="notice"><strong>배정 기준 인건비 예상</strong><p>{Number(preview.result.correction.beforeCost).toLocaleString("ko-KR")}원 → {Number(preview.result.correction.afterCost).toLocaleString("ko-KR")}원</p><p>현재 일당·팀장수당 및 확정 일당 기준입니다. 수동 입력·제외 금액·지급 기록은 별도이며 실제 정산액은 매출·수익에서 확인해주세요.</p>{preview.result.correction.unknownRates>0 && <p>일당 미확정 항목이 있어 합계가 불완전합니다.</p>}</div>}
         {preview && <>
           {missing.length>0 && <div className="notice"><p>{missing.map(date=>date.slice(5).replace("-","/")).join(" · ")} 팀장이 미배정 상태입니다.</p><label className="check"><input type="checkbox" checked={confirmMissing} disabled={disabled} onChange={event=>setConfirmMissing(event.target.checked)} />미배정 날짜를 남기고 저장합니다.</label></div>}
           {warnings.length>0 && <div className="notice"><strong>다른 업체와 일정 중복</strong>{warnings.map((item,index)=><p key={index}>{item.workDate} · {item.workerName} · {item.reason}</p>)}<label className="check"><input type="checkbox" disabled={disabled} checked={confirmConflict} onChange={event=>setConfirmConflict(event.target.checked)} />시공자와 중복 일정을 확인했습니다.</label></div>}
