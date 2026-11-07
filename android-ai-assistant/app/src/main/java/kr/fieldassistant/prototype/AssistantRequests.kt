@@ -21,6 +21,7 @@ internal object AssistantRequests {
         Feature("inventory","필름 재고 · 입고 · 반출 · 반입","/admin/inventory",true),
         Feature("receivables","미수금 확인 · 입금 관리","/admin/receivables",true),
         Feature("profit","매출 · 수익","/admin?tab=profit",true),
+        Feature("follow-ups","상담 후속 관리 · 동기화","/admin/follow-ups",true),
         Feature("workers","시공자 관리","/admin/workers",true),
         Feature("clients","거래처 관리","/admin/clients",true),
         Feature("customer-chat","고객 채팅","/admin/customer-chat",true),
@@ -35,7 +36,7 @@ internal object AssistantRequests {
         Feature("jobs","구인 · 구직","/jobs"),
         Feature("all","필름장이 전체 기능","/")
     )
-    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables","quotes","assignment","payment","report","expenses","film-use","all","attendance")
+    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables","quotes","assignment","payment","report","expenses","film-use","all","attendance","workers","follow-ups")
     fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
         val q=NaturalLanguage.normalize(input);val compact=q.replace(Regex("\\s+"),"")

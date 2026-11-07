@@ -16,6 +16,7 @@ const SiteExtraWork = dynamic(() => import("../components/SiteExtraWork"), { ssr
 import ToolIllustration from "../components/ui/ToolIllustration";
 
 const menus = [
+  { href: "/admin/follow-ups", label: "상담 후속 관리", description: "연락 예정일 · 상담 단계 · 앱과 동기화", icon: "customerChat" },
   {
     href: "/admin/customer-page",
     label: "고객페이지 관리",

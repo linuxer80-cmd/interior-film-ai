@@ -212,7 +212,7 @@ class MainActivity : Activity() {
         super.onResume()
         NotificationInbox.onChanged={ user -> if(account?.userId==user) inboxBadge?.text="알림 ${NotificationInbox.unread(this,user)}" }
         // Refresh the displayed state after returning from system settings.
-        if(account!=null) { render();ChatPushRegistration.enqueue(applicationContext,replace=true) }
+        if(account!=null) { render();refreshFollowUpCache();ChatPushRegistration.enqueue(applicationContext,replace=true) }
     }
     override fun onStop() {
         NotificationInbox.onChanged=null
@@ -919,6 +919,30 @@ class MainActivity : Activity() {
     private var homeInput=""
     private var displayedHomeConsultationId: String? = null
     private var dailyExpanded=false
+    private var followUpRefreshBusy=false
+    private fun refreshFollowUpCache() {
+        val user=account?.userId ?: return
+        val company=selectedCompany()?.takeIf { it.role=="관리자" } ?: return
+        val local=records();val linked=(0 until local.length()).mapNotNull { local.optJSONObject(it) }.filter { it.optString("chat_company")==company.id && it.optString("follow_up_id").isNotBlank() }
+        if(linked.isEmpty() || followUpRefreshBusy) return
+        if(!prefs.edit().putString("selected_company",company.id).commit()) return
+        followUpRefreshBusy=true;val epoch=sessionEpoch
+        scope.launch { try {
+            var offset=0;val wanted=linked.associateBy { it.optString("follow_up_id") }.toMutableMap()
+            while(wanted.isNotEmpty() && offset<100000) {
+                val result=auth.businessTools(user,company.id,"/api/admin/consultation-follow-ups?companyId=${company.id}&offset=$offset").getJSONArray("items")
+                if(epoch!=sessionEpoch || selectedCompany()?.id!=company.id) return@launch
+                for(i in 0 until result.length()) { val row=result.getJSONObject(i);val record=wanted.remove(row.getString("id")) ?: continue
+                    changeRecord(record.getString("id")) { it.put("follow_up",JSONObject().put("stage",row.getString("stage")).put("action",row.getString("action")).put("date",row.optString("due_date").takeUnless { d->d=="null" }.orEmpty())).put("follow_up_revision",row.getInt("revision")) }
+                }
+                if(result.length()<100) break
+                offset+=100
+            }
+            if(epoch==sessionEpoch) render()
+        } catch(e:CancellationException) { throw e } catch(_:Exception) { /* Keep cached data; editor always rechecks before changes. */ }
+          finally { followUpRefreshBusy=false }
+        }
+    }
     private fun followUpItems():List<JSONObject> {
         val company=selectedCompany()?.takeIf { it.role=="관리자" } ?: return emptyList()
         val items=records()
@@ -983,10 +1007,26 @@ class MainActivity : Activity() {
             }.setNegativeButton("닫기",null).show()
         return true
     }
-    private fun editFollowUp(id:String,proposal:FollowUpCommands.Command?=null) {
+    private fun editFollowUp(id:String,proposal:FollowUpCommands.Command?=null,cloudReady:Boolean=false) {
         val user=account?.userId ?: return
         val company=selectedCompany()?.takeIf { it.role=="관리자" } ?: return
         val item=recordById(id)?.takeIf { it.optString("chat_company")==company.id } ?: return
+        if(!prefs.edit().putString("selected_company",company.id).commit()) { message("업체 선택을 저장하지 못했습니다.");return }
+        if(!cloudReady && item.optString("follow_up_id").isNotBlank()) {
+            val epoch=sessionEpoch
+            scope.launch { try {
+                val result=auth.businessTools(user,company.id,"/api/admin/consultation-follow-ups?companyId=${company.id}&id=${item.getString("follow_up_id")}")
+                if(epoch!=sessionEpoch || selectedCompany()?.id!=company.id) return@launch
+                val row=result.optJSONArray("items")?.optJSONObject(0)
+                if(row==null) {
+                    check(item.optInt("follow_up_revision",0)==0) { "동기화된 상담을 찾지 못했습니다. 목록에서 다시 확인해 주세요." }
+                    editFollowUp(id,proposal,true);return@launch
+                }
+                changeRecord(id) { it.put("follow_up",JSONObject().put("stage",row.getString("stage")).put("action",row.getString("action")).put("date",row.optString("due_date").takeUnless { value->value=="null" }.orEmpty())).put("follow_up_revision",row.getInt("revision")) }
+                editFollowUp(id,proposal,true)
+            } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "상담을 불러오지 못했습니다.") } }
+            return
+        }
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(12)) }
         fun choice(label:String,values:List<String>,selected:Int):android.widget.Spinner {
             form.addView(text(label,14f,true).apply { setPadding(0,dp(12),0,dp(4)) })
@@ -1002,7 +1042,7 @@ class MainActivity : Activity() {
         form.addView(text("다시 연락할 날짜 · 선택",14f,true).apply { setPadding(0,dp(12),0,dp(4)) })
         val date=EditText(this).apply { hint="예: 2026-11-10";setSingleLine(true);setText(proposal?.date ?: ConsultationFollowUp.date(item)) }
         form.addView(date)
-        form.addView(text("연락일이 되면 홈의 ‘내가 처리할 상담’에 표시합니다. 구글 캘린더에는 추가하지 않습니다. 이 휴대폰의 상담 관리에 저장되며 시공 상태는 바뀌지 않습니다.",13f))
+        form.addView(text("연락일이 되면 홈의 ‘내가 처리할 상담’에 표시합니다. 구글 캘린더에는 추가하지 않습니다. 앱과 웹에 함께 저장되며 시공 상태는 바뀌지 않습니다.",13f))
         val dialog=AlertDialog.Builder(this).setTitle("상담 진행 관리").setView(ScrollView(this).apply { addView(form) })
             .setNegativeButton("취소",null).setPositiveButton("저장",null).create()
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -1013,8 +1053,19 @@ class MainActivity : Activity() {
                 date.error=e.message ?: "연락 날짜를 확인해 주세요.";date.requestFocus();return@setOnClickListener
             }
             val follow=JSONObject().put("stage",stageKeys[stage.selectedItemPosition]).put("action",actionKeys[action.selectedItemPosition]).put("date",normalized)
-            if(changeRecord(id) { it.put("follow_up",follow) }) { dialog.dismiss();visibleConversationKey=null;render();message("상담 진행을 저장했습니다.") }
-            else message("저장하지 못했습니다. 다시 시도해 주세요.")
+            val cloudId=recordById(id)?.optString("follow_up_id").orEmpty().ifBlank { java.util.UUID.randomUUID().toString() }
+            if(!changeRecord(id) { it.put("follow_up_id",cloudId) }) { message("상담 번호를 저장하지 못했습니다.");return@setOnClickListener }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
+            val epoch=sessionEpoch
+            scope.launch { try {
+                val body=JSONObject().put("id",cloudId).put("companyId",company.id).put("title",followUpName(item).take(200)).put("revision",item.optInt("follow_up_revision",0)).put("stage",follow.getString("stage")).put("action",follow.getString("action")).put("date",normalized)
+                val result=auth.businessTools(user,company.id,"/api/admin/consultation-follow-ups?companyId=${company.id}",body).getJSONObject("item")
+                if(epoch!=sessionEpoch || selectedCompany()?.id!=company.id) return@launch
+                if(changeRecord(id) { it.put("follow_up",follow).put("follow_up_revision",result.getInt("revision")) }) { dialog.dismiss();visibleConversationKey=null;render();message("상담 진행을 앱과 웹에 저장했습니다.") }
+                else message("서버에 저장했습니다. 상담을 다시 열어 최신 내용을 확인해 주세요.")
+            } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch) message(e.message ?: "저장하지 못했습니다. 새로 확인해 주세요.") }
+              finally { if(epoch==sessionEpoch) dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true }
+            }
         } };dialog.show()
     }
     private fun showConversationList() {
@@ -1190,6 +1241,12 @@ class MainActivity : Activity() {
     }
     private fun openNativeFeature(featureId:String):Boolean {
         when(featureId) {
+            "workers","follow-ups" -> {
+                val uid=account?.userId ?: return true
+                val company=selectedCompany()?.takeIf { it.role=="관리자" } ?: return true
+                if(!prefs.edit().putString("selected_company",company.id).commit()) { message("업체 선택을 저장하지 못했습니다.");return true }
+                startActivity(Intent(this,BusinessToolsActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("mode",featureId))
+            }
             "new-site" -> showNewSiteRegistration()
             "attendance" -> {
                 val uid=account?.userId ?: return true
@@ -3300,6 +3357,11 @@ class MainActivity : Activity() {
         fun input(hintText:String,value:String,multiline:Boolean=false):EditText = EditText(this).apply {
             hint=hintText;setText(value);filters=arrayOf(android.text.InputFilter.LengthFilter(2000));if(!multiline) setSingleLine()
         }
+        form.addView(Button(this).apply { text="저장된 견적서 · PDF 미리보기 / 공유";setOnClickListener {
+            if(account?.userId!=uid || selectedCompany()?.id!=company.id) return@setOnClickListener
+            if(!prefs.edit().putString("selected_company",company.id).commit()) { message("업체 선택을 저장하지 못했습니다.");return@setOnClickListener }
+            startActivity(Intent(this@MainActivity,QuoteExportActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("site",siteId))
+        } })
         val fields=listOf("title" to "견적서 제목","company_name" to "업체명","business_number" to "사업자번호","company_phone" to "업체 연락처",
             "customer_name" to "고객명","customer_phone" to "고객 연락처","address" to "주소","work_date" to "시공일","duration" to "시공 기간",
             "customer_note" to "고객 안내","other_schedule" to "기타 일정","footer" to "하단 안내")
