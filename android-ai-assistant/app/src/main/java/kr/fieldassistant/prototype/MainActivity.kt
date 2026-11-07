@@ -846,7 +846,7 @@ class MainActivity : Activity() {
         val editEpoch=sessionEpoch;val editCompany=selectedCompany()?.id ?: return
         val item=recordById(id) ?: return
         if(item.optJSONObject("registration")!=null || id in savingRegistrations) return
-        val draft=item.optJSONObject("chat_draft") ?: return
+        val draft=item.optJSONObject("chat_draft")?.let { JSONObject(it.toString()) } ?: return
         val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8)) }
         val fields=listOf("site_name" to "현장명","customer_name" to "고객명","customer_phone" to "전화번호","address" to "주소","work_description" to "시공 내용","memo" to "상담 메모")
         val edits=fields.associate { (key,label) ->
@@ -854,9 +854,9 @@ class MainActivity : Activity() {
             key to EditText(this).apply { setText(draft.optString(key));setSingleLine(key!="memo");box.addView(this) }
         }
         val candidates=item.optJSONObject("analysis_candidates")
-        val dates=EditText(this).apply { hint="시공 날짜: 2026-11-07, 2026-11-08";setText((draft.optJSONArray("work_dates") ?: JSONArray()).let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } });box.addView(this) }
+        val dates=EditText(this).apply { hint="시공 날짜: 2026/11/7, 2026/11/8";setText((draft.optJSONArray("work_dates") ?: JSONArray()).let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } });box.addView(this) }
         val amountInputs=listOf("contract_amount" to "계약금액 (원)","deposit_amount" to "선금 (원)").associate { (key,label) ->
-            box.addView(text(label,13f,true));key to EditText(this).apply { hint=label;inputType=android.text.InputType.TYPE_CLASS_NUMBER;setText(draft.optString(key,"").takeUnless { it=="null" }.orEmpty());box.addView(this) }
+            box.addView(text(label,13f,true));key to EditText(this).apply { hint="예: 250,000원 또는 25만원";inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;setSingleLine(true);filters=arrayOf(android.text.InputFilter.LengthFilter(40));setText(draft.optString(key,"").takeUnless { it=="null" }.orEmpty());box.addView(this) }
         }
         if(candidates!=null) {
             box.addView(text("분석 결과를 확인한 항목만 선택하세요. 금액은 신규 현장에 적용하며 기존 현장의 금액은 유지됩니다.",13f))
@@ -888,10 +888,15 @@ class MainActivity : Activity() {
             if(editEpoch!=sessionEpoch || selectedCompany()?.id!=editCompany || recordById(id)?.optJSONObject("registration")!=null) { message("계정 또는 등록 상태가 변경되었습니다. 다시 열어 주세요.");return@setOnClickListener }
             if(edits.getValue("site_name").text.toString().isBlank()) { edits.getValue("site_name").error="현장명을 입력해 주세요.";return@setOnClickListener }
             try {
-                val chosenDates=ConsultationInput.dates(dates.text.toString())
-                amountInputs.forEach { (_,edit) -> ConsultationInput.amount(edit.text.toString()) }
+                dates.error=null;amountInputs.values.forEach { it.error=null }
+                val chosenDates=try {ConsultationInput.dates(dates.text.toString())} catch(e:IllegalArgumentException) {dates.error=e.message;dates.requestFocus();return@setOnClickListener}
+                val chosenAmounts=mutableMapOf<String,String>()
+                for((key,edit) in amountInputs) {
+                    try { chosenAmounts[key]=ConsultationInput.amount(edit.text.toString()) }
+                    catch(e:IllegalArgumentException) {edit.error=e.message;edit.requestFocus();return@setOnClickListener}
+                }
                 draft.put("work_dates",JSONArray(chosenDates))
-                amountInputs.forEach { (key,edit) -> draft.put(key,edit.text.toString()) }
+                chosenAmounts.forEach { (key,value) -> draft.put(key,value) }
                 if(quoteCandidates!=null) draft.put("consultation_quote_seed",JSONObject().put("items",if(quoteChoice.isChecked) quoteCandidates else JSONArray()).put("other_schedule",candidates?.optString("other_schedule","").orEmpty()))
                 if(selectedMaterials.isNotEmpty()) draft.put("materials",JSONArray(selectedMaterials.filter { it.first.isChecked }.map { (_,m) -> JSONObject(m.toString()).put("unit_price","").put("quantity",0) }))
             } catch(e:Exception) { message(e.message ?: "날짜와 금액을 확인해 주세요.");return@setOnClickListener }
