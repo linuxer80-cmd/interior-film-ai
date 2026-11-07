@@ -2227,7 +2227,27 @@ class MainActivity : Activity() {
         dialog.show()
     }
     private var workflowSitesBusy=false
-    private fun chooseWorkflowSite(featureId:String) {
+    private fun showPhotoTasks() {
+        val company=selectedCompany() ?: return
+        val uid=account?.userId ?: return
+        val owner=company.role=="관리자"
+        val choices=if(owner) arrayOf("완료보고 사진", "상담 사진 분석", "자재 영수증 등록") else arrayOf("완료보고 사진")
+        AlertDialog.Builder(this).setTitle("사진으로 무엇을 할까요?").setItems(choices) { _,index ->
+            if(!sitePhotoSessionValid(uid,company)) return@setItems
+            when(index) {
+                0 -> chooseWorkflowSite("report","완료사진 · 현장 선택") { user,selected,id,name ->
+                    pickReportPhoto(ReportPhotoRequest(user,selected,id,name,"after"))
+                }
+                1 -> chooseScreenshotForSite()
+                2 -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/inventory")
+            }
+        }.setNegativeButton("취소",null).show()
+    }
+    private fun reportMissing(title:String,actionLabel:String,action:()->Unit) {
+        AlertDialog.Builder(this).setTitle(title).setMessage("입력한 내용은 유지됩니다. 이 항목을 보완한 뒤 제출할 수 있습니다.")
+            .setPositiveButton(actionLabel) { _,_ -> action() }.setNegativeButton("나중에",null).show()
+    }
+    private fun chooseWorkflowSite(featureId:String, title:String?=null, onChosen:((String,CompanyAccess,String,String)->Unit)?=null) {
         val uid=account?.userId ?: return
         val company=selectedCompany() ?: return
         val feature=AssistantRequests.feature(featureId,company.role=="관리자") ?: return
@@ -2244,7 +2264,7 @@ class MainActivity : Activity() {
                 content.addView(search)
                 val list=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL }
                 content.addView(ScrollView(this@MainActivity).apply { addView(list) },LinearLayout.LayoutParams(-1,dp(320)))
-                val dialog=AlertDialog.Builder(this@MainActivity).setTitle("${feature.title} · 현장 선택").setView(content).setNegativeButton("닫기",null).create()
+                val dialog=AlertDialog.Builder(this@MainActivity).setTitle(title ?: "${feature.title} · 현장 선택").setView(content).setNegativeButton("닫기",null).create()
                 fun display(query:String,page:Int=0) {
                     list.removeAllViews()
                     val matches=sites.filter { NativeWorkflow.matches(it,query) }
@@ -2258,7 +2278,7 @@ class MainActivity : Activity() {
                             if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { dialog.dismiss();message("계정과 업체를 다시 확인해 주세요.");return@addButton }
                             if(id.isBlank()) { message("현장 정보를 다시 확인해 주세요.");return@addButton }
                             dialog.dismiss()
-                            if(action=="payment") openSitePayment(uid,company,id,name) else openSiteAction(company.id,id,action)
+                            if(onChosen!=null) onChosen(uid,company,id,name) else if(action=="payment") openSitePayment(uid,company,id,name) else openSiteAction(company.id,id,action)
                         }
                     }
                     if(page>0) addButton(list,"이전",false) { display(query,page-1) }
@@ -3033,9 +3053,9 @@ class MainActivity : Activity() {
         val prefix="report_draft_"+company.id+"_"+siteId+"_"
         if(prefs.getBoolean(prefix+"submission_uncertain",false)) { message("이전 제출 결과가 확인되지 않았습니다. 기존 보고서 상태를 먼저 확인해 주세요.");return }
         val summary=prefs.getString(prefix+"summary","").orEmpty().trim();val region=prefs.getString(prefix+"region","").orEmpty().trim();val memo=prefs.getString(prefix+"memo","").orEmpty().trim()
-        if(summary.isBlank()) { message("먼저 작성 내용에서 실제 시공 내용을 입력하고 임시 저장해 주세요.");return }
+        if(summary.isBlank()) { reportMissing("작업 내용을 입력해 주세요","내용 작성") { if(sitePhotoSessionValid(uid,company)) showReportDraft(uid,company,siteId) };return }
         val laborText=prefs.getString(prefix+"labor",null)
-        if(laborText==null) { message("먼저 인건비 임시 입력에서 시공자별 내역을 확인하고 저장해 주세요. 인건비가 없으면 선택 없이 저장할 수 있습니다.");return }
+        if(laborText==null) { reportMissing("인건비 확인이 남았습니다","인건비 확인") { if(sitePhotoSessionValid(uid,company)) prepareNativeLaborDraft(uid,company,siteId) };return }
         val labor=try { JSONArray(laborText) } catch(_:Exception) { message("인건비 임시 내용을 확인하지 못했습니다. 다시 입력해 주세요.");return }
         workerActionBusy=true;val epoch=sessionEpoch
         scope.launch {
@@ -3044,7 +3064,19 @@ class MainActivity : Activity() {
                 val support=auth.assistantReportSupport(uid,company.id,siteId)
                 val expenses=auth.assistantReportExpenses(uid,company.id,siteId)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || !active) return@launch
-                ReportSubmissionGate.problem(access,support)?.let { error(it) }
+                ReportSubmissionGate.problem(access,support)?.let { problem ->
+                    workerActionBusy=false
+                    if(problem=="시공 완료 사진을 먼저 등록해 주세요.") {
+                        reportMissing("완료 사진을 추가해 주세요","사진 추가") {
+                            if(sitePhotoSessionValid(uid,company)) pickReportPhoto(ReportPhotoRequest(uid,company,siteId,siteName,"after"))
+                        }
+                    } else if(problem=="자재 반납량 또는 사용 여부를 먼저 확인해 주세요.") {
+                        reportMissing("자재 사용·반납 확인이 남았습니다","자재 확인") {
+                            if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,siteId,"materials")
+                        }
+                    } else message(problem)
+                    return@launch
+                }
                 val operations=support.getJSONObject("operations");val materials=operations.getJSONArray("materials")
                 check(materials.length()<=100 && expenses.length()<=100 && labor.length()<=100) { "내역이 많아 기존 보고서 화면에서 확인해 주세요." }
                 val workers=access.optJSONArray("laborWorkers") ?: error("시공자 목록을 확인하지 못했습니다.")
@@ -4333,13 +4365,8 @@ class MainActivity : Activity() {
             }
         }
         row.addView(voice,LinearLayout.LayoutParams(dp(48),dp(48)))
-        val photo=assistantInputIcon(R.drawable.ic_assistant_photo,"현장 사진 추가").apply {
-            setOnClickListener {
-                val company=selectedCompany()
-                val id=if(company!=null && prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
-                if(company==null || id.isBlank()) message("먼저 사진을 추가할 현장 상세를 선택해 주세요.")
-                else openSiteAction(company.id,id,"photos")
-            }
+        val photo=assistantInputIcon(R.drawable.ic_assistant_photo,"사진 작업 선택").apply {
+            setOnClickListener { showPhotoTasks() }
         }
         row.addView(photo,LinearLayout.LayoutParams(dp(48),dp(48)))
         val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(35,84,59),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
