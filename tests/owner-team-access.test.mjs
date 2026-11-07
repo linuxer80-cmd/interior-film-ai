@@ -1,3 +1,5 @@
+import { readChatBody } from '../lib/chatRequestBody.mjs';
+import { teamPhotoMessages,uploadTeamPhoto } from '../lib/teamChatPhoto.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -26,7 +28,7 @@ test('team adds active same-company owner once and preserves assignment role',()
 });
 function route(f,user='owner'){
  const src=fs.readFileSync(new URL('../app/api/worker/team/route.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
- return new Function('after','dispatchTeamMessage','privateAuth','privateJson','uuid','resolveTeamSite','authorizedTeam','includeTeamOwners','teamDate','teamMessage',src+';return {GET,POST,PATCH};')(()=>{},()=>{},async()=>({db:f.db,user:{id:user}}),(b,s=200)=>Response.json(b,{status:s}),v=>/^[0-9a-f-]{36}$/i.test(v),resolveTeamSite,authorizedTeam,includeTeamOwners,teamDate,teamMessage);
+ return new Function('readChatBody','teamPhotoMessages','uploadTeamPhoto','after','dispatchTeamMessage','privateAuth','privateJson','uuid','resolveTeamSite','authorizedTeam','includeTeamOwners','teamDate','teamMessage',src+';return {GET,POST,PATCH};')(readChatBody,teamPhotoMessages,uploadTeamPhoto,()=>{},()=>{},async()=>({db:f.db,user:{id:user}}),(b,s=200)=>Response.json(b,{status:s}),v=>/^[0-9a-f-]{36}$/i.test(v),resolveTeamSite,authorizedTeam,includeTeamOwners,teamDate,teamMessage);
 }
 test('unassigned owner reads and writes team messages; workers still require exact day',async()=>{
  const f=fixture();const url='https://app.example/api/worker/team?siteId='+S+'&date='+DAY;
@@ -50,4 +52,15 @@ test('read acknowledgements use authenticated user and exact authorized room; GE
  const call=calls.find(c=>c.name==='mark_team_messages_read');assert.equal(call.args.p_user,'worker');assert.equal(call.args.p_company,'co');assert.equal(call.args.p_site,S);assert.equal(call.args.p_date,DAY);assert.deepEqual(call.args.p_ids,[mid]);
  assert.equal((await routes.PATCH(new Request(url.replace(DAY,'2026-10-22'),{method:'PATCH',body:JSON.stringify({messageIds:[mid]})}))).status,403);
  assert.equal((await routes.PATCH(new Request(url,{method:'PATCH',body:JSON.stringify({messageIds:['invalid']})}))).status,400);
+});
+
+test('team photo POST authorizes room before accepting multipart attachments and retries idempotently',async()=>{
+ const f=fixture(),owner='33333333-3333-4333-8333-333333333333';f.tables.profiles[0].id=owner;
+ const sharp=(await import('sharp')).default;const bytes=await sharp({create:{width:20,height:20,channels:3,background:'red'}}).png().toBuffer();
+ let uploads=0;f.db.storage={from:()=>({upload:async()=>{uploads++;return {};}})};
+ const url='https://app.example/api/worker/team?siteId='+S+'&date='+DAY;
+ const form=()=>{const x=new FormData();x.set('messageId','77777777-7777-4777-8777-777777777777');x.set('text','현장 사진');x.set('photo',new File([bytes],'photo.png',{type:'image/png'}));return x;};
+ let res=await route(f,'worker').POST(new Request(url.replace(DAY,'2026-10-22'),{method:'POST',body:form()}));assert.equal(res.status,403);assert.equal(uploads,0);
+ res=await route(f,owner).POST(new Request(url,{method:'POST',body:form()}));assert.equal(res.status,200);assert.equal(uploads,1);assert.ok(f.tables.worker_team_messages[0].image_path.includes('/team-chat/'+owner+'/'));
+ res=await route(f,owner).POST(new Request(url,{method:'POST',body:form()}));assert.equal(res.status,200);assert.equal(uploads,1);assert.equal(f.tables.worker_team_messages.length,1);
 });

@@ -189,18 +189,6 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             if(inputData.getBoolean("watch",false) && BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.armWatcher(ctx,uid,tree,true)
         }
     }
-    private fun notifyCandidate(ctx: Context,uid: String,id: String) {
-        val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        AssistantNotificationChannels.ensure(manager,"assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT)
-        if(Build.VERSION.SDK_INT>=33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return
-        if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
-        val request=id.hashCode() and Int.MAX_VALUE
-        val intent=Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra("assistant_record",id).putExtra("assistant_user",uid)
-        val pending=PendingIntent.getActivity(ctx,request,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        try { manager.notify(request,Notification.Builder(ctx,"assistant_results").setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("견적 문의일 수 있는 통화가 있어요")
-            .setContentText("눌러서 내용을 확인하고 현장 등록을 선택하세요.").setContentIntent(pending).setAutoCancel(true).build()) }
-        catch(_: SecurityException) { }
-    }
+    private fun notifyCandidate(ctx: Context,uid: String,id: String) { CallNotifications.post(ctx,uid,id) }
+
 }

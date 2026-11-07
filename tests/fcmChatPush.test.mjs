@@ -7,10 +7,12 @@ const meta = { token: 'registration-token-for-test', recipientId: '11111111-1111
   companyId: '22222222-2222-2222-2222-222222222222', targetId: '33333333-3333-3333-3333-333333333333',
   messageId: '44444444-4444-4444-4444-444444444444', kind: 'team', date: '2026-11-06' };
 
-test('chat payload excludes message content and rejects invalid routing', () => {
+test('chat payload bounds authorized preview and rejects invalid routing', () => {
   const payload = chatPushPayload({ ...meta, body: 'private message', title: 'private name' });
   assert.equal(payload.message.android.restricted_package_name, 'kr.fieldassistant.prototype.stable');
-  assert.equal(JSON.stringify(payload).includes('private'), false);
+  assert.equal(payload.message.data.body,'private message');
+  assert.equal(chatPushPayload({...meta,body:'x'.repeat(900),title:'y'.repeat(200)}).message.data.body.length,300);
+  assert.equal(chatPushPayload(meta).message.data.body,undefined);
   assert.throws(() => chatPushPayload({ ...meta, targetId: 'not-a-uuid' }));
   assert.throws(() => chatPushPayload({ ...meta, date: 'invalid' }));
 });

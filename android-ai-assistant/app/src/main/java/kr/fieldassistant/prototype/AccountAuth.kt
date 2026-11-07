@@ -216,9 +216,11 @@ internal class AccountAuth private constructor(context: Context) {
         }
     } }
 
-    suspend fun sendCustomerPhoto(expectedUser:String,company:CompanyAccess,target:String,id:String,text:String,bytes:ByteArray,mime:String):JSONObject {
+    suspend fun sendCustomerPhoto(expectedUser:String,company:CompanyAccess,target:String,id:String,text:String,bytes:ByteArray,mime:String,kind:String="customer",date:String=""):JSONObject {
+        require(kind in listOf("customer","team"))
+        if(kind=="team") require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(date))
         val verified=verify()
-        check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role=="관리자" }) { "계정 또는 업체가 변경되었습니다." }
+        check(verified.userId==expectedUser && verified.companies.any { it.id==company.id && it.role==company.role && (kind=="team" || it.role=="관리자") }) { "계정 또는 업체가 변경되었습니다." }
         require(Regex("^[0-9a-fA-F-]{36}$").matches(target) && Regex("^[0-9a-fA-F-]{36}$").matches(id))
         require(bytes.isNotEmpty() && bytes.size<=2*1024*1024 && mime in listOf("image/jpeg","image/png","image/webp"))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
@@ -226,7 +228,8 @@ internal class AccountAuth private constructor(context: Context) {
             val form=okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
                 .addFormDataPart("messageId",id).addFormDataPart("text",text)
                 .addFormDataPart("photo","photo",bytes.toRequestBody(mime.toMediaType())).build()
-            val request=Request.Builder().url("https://interior-film-ai.vercel.app/api/admin/customer-chat?thread="+Uri.encode(target))
+            val path=if(kind=="team") "/api/worker/team?siteId="+Uri.encode(target)+"&date="+Uri.encode(date) else "/api/admin/customer-chat?thread="+Uri.encode(target)
+            val request=Request.Builder().url("https://interior-film-ai.vercel.app"+path)
                 .header("Authorization","Bearer "+token).post(form).build()
             chatHttp.newCall(request).execute().use { response ->
                 val raw=response.body?.byteStream()?.use { SecureTransport.readBounded(it,1024*1024) } ?: ByteArray(0)

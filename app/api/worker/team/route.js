@@ -1,3 +1,5 @@
+import { readChatBody } from '../../../../lib/chatRequestBody.mjs';
+import { uploadTeamPhoto, teamPhotoMessages } from '../../../../lib/teamChatPhoto.mjs';
 import { after } from 'next/server';
 import { dispatchTeamMessage } from '../../../../lib/workerTeamPush.mjs';
 import { dispatchAndroidChat } from '../../../../lib/androidChatPushDispatch.mjs';
@@ -62,25 +64,35 @@ export async function GET(request){try{
     if(p?.photo_path){const signed=await a.db.storage.from('labor-avatars').createSignedUrl(p.photo_path,300);photoUrl=signed.data?.signedUrl||null;}
     return {id:w.id,user_id:w.user_id,name:p?.name||w.name,phone:w.phone,role:w.role,assignment_role:w.assignment_role,profile:p?{region:p.region,skills:p.skills,experience_years:p.experience_years,introduction:p.introduction,photoUrl}:null};
   }));
-  let q=a.db.from('worker_team_messages').select('id,sender_id,body,created_at').eq('company_id',a.site.company_id).eq('site_id',a.site.id).eq('work_date',a.date).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(100);
+  let q=a.db.from('worker_team_messages').select('id,sender_id,body,created_at,image_path').eq('company_id',a.site.company_id).eq('site_id',a.site.id).eq('work_date',a.date).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(100);
   const result=await q;
   if(result.error&& !['42P01','PGRST205'].includes(result.error.code))throw result.error;
   const ids=(result.data||[]).map(m=>m.id);
   const reads=ids.length ? await a.db.rpc('team_message_read_counts',{p_ids:ids}) : {data:[]};
   if(reads.error && !['PGRST202','42883','42P01','PGRST205'].includes(reads.error.code))throw reads.error;
   const counts=new Map((reads.data||[]).map(row=>[row.message_id,Number(row.unread_count)]));
-  const messages=(result.data||[]).reverse().map(m=>({...m,unreadCount:reads.error?null:counts.get(m.id)||0}));
+  const messages=await teamPhotoMessages(a.db,a,(result.data||[]).reverse().map(m=>({...m,unreadCount:reads.error?null:counts.get(m.id)||0})));
   return privateJson({members,messages,userId:a.user.id,readReady:!reads.error,chatReady:!result.error,notice:result.error?'팀원 채팅 설정 SQL을 먼저 실행해주세요.':null});
 }catch(e){return failure(e);}}
 export async function POST(request){try{
   const a=await context(request);
   if(a.dates)throw Object.assign(Error('메시지 날짜를 선택해주세요.'),{status:400});
-  const raw=await request.text();if(raw.length>12000)throw Object.assign(Error('메시지가 너무 깁니다.'),{status:400});
-  let input;try{input=JSON.parse(raw);}catch{throw Object.assign(Error('메시지를 확인해주세요.'),{status:400});}
+  const input=await readChatBody(request);
+  input.id=input.id||input.messageId;
   if(!uuid(input.id))throw Object.assign(Error('요청 번호를 확인해주세요.'),{status:400});
-  const body=teamMessage(input.body);
-  const r=await a.db.from('worker_team_messages').insert({id:input.id,company_id:a.site.company_id,site_id:a.site.id,work_date:a.date,sender_id:a.user.id,body});
-  if(r.error){if(r.error.code!=='23505')throw r.error;const old=await a.db.from('worker_team_messages').select('sender_id,site_id,work_date,body').eq('id',input.id).single();if(old.error||old.data.sender_id!==a.user.id||old.data.site_id!==a.site.id||old.data.work_date!==a.date||old.data.body!==body)throw Object.assign(Error('중복 요청 정보가 다릅니다.'),{status:409});}
+  const body=teamMessage(input.photo?(input.text?.trim()||'사진을 보냈습니다.'):input.body);
+  const existing=await a.db.from('worker_team_messages').select('sender_id,site_id,work_date,body,image_path').eq('id',input.id).maybeSingle();
+  if(existing.error)throw existing.error;
+  const same=old=>old&&old.sender_id===a.user.id&&old.site_id===a.site.id&&old.work_date===a.date&&old.body===body&&Boolean(old.image_path)===Boolean(input.photo);
+  if(existing.data){if(!same(existing.data))throw Object.assign(Error('중복 요청 정보가 다릅니다.'),{status:409});return privateJson({ok:true});}
+  const imagePath=input.photo?await uploadTeamPhoto(a.db,a,input.id,input.photo):null;
+  const r=await a.db.from('worker_team_messages').insert({id:input.id,company_id:a.site.company_id,site_id:a.site.id,work_date:a.date,sender_id:a.user.id,body,...(imagePath?{image_path:imagePath}:{})});
+  if(r.error){
+    if(imagePath&&/^[0-9A-Z]{5}$/.test(r.error.code||''))await a.db.storage.from('work-photos').remove([imagePath]);
+    if(r.error.code!=='23505')throw r.error;
+    const old=await a.db.from('worker_team_messages').select('sender_id,site_id,work_date,body,image_path').eq('id',input.id).single();
+    if(old.error||!same(old.data))throw Object.assign(Error('중복 요청 정보가 다릅니다.'),{status:409});
+  }
   // Only a newly persisted message schedules push. Retrying the same message ID
   // does not send another notification, and push errors never undo the message.
   if (!r.error) after(async () => {

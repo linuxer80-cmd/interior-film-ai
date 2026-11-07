@@ -21,6 +21,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".WebWorkspaceActivity" android:exported="false" />
+        <receiver android:name=".CallNotificationDeclineReceiver" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
