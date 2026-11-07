@@ -15,27 +15,34 @@ import java.io.File
 class QuoteExportActivity:Activity(){
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main)
     private var pdf:File?=null
+    private val ui by lazy { BusinessUi(this) }
     private val uid get()=intent.getStringExtra("user").orEmpty()
     private val company get()=intent.getStringExtra("company").orEmpty()
     private fun valid()=!isFinishing&&!isDestroyed&&getSharedPreferences("assistant_user_$uid",MODE_PRIVATE).getString("selected_company",null)==company
     private fun notice(s:String){if(valid())Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
     override fun onCreate(saved:Bundle?){
         super.onCreate(saved)
-        val root=LinearLayout(this).apply{orientation=1;setOnApplyWindowInsetsListener{v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED}}
+        val root=LinearLayout(this).apply{orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener{v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED}}
         window.setDecorFitsSystemWindows(false)
-        root.addView(Button(this).apply{text="‹ 견적서로 돌아가기";setOnClickListener{finish()}})
-        val status=TextView(this).apply{text="저장된 견적서를 확인하고 있습니다…";setPadding(24,16,24,16)};root.addView(status)
-        val save=Button(this).apply{text="PDF 저장";isEnabled=false};root.addView(save)
-        val share=Button(this).apply{text="카카오톡 등으로 PDF 공유";isEnabled=false};root.addView(share)
-        val preview=TextView(this).apply{textSize=16f;setTextColor(0xff193c31.toInt());setPadding(24,16,24,24);setTextIsSelectable(true)}
-        root.addView(ScrollView(this).apply{addView(preview)},LinearLayout.LayoutParams(-1,0,1f));setContentView(root);root.requestApplyInsets()
+        root.addView(ui.button("‹ 견적서").apply { setOnClickListener { finish() } },LinearLayout.LayoutParams(-1,-2).apply { setMargins(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(8)) })
+        val heading=LinearLayout(this).apply { orientation=1;setPadding(ui.dp(20),0,ui.dp(20),0) };root.addView(heading)
+        ui.heading(heading,"견적서 내보내기","내용을 확인하고 고객에게 전달하세요")
+        val status=ui.text("저장된 견적서를 확인하고 있습니다…",13f,color=ui.muted);heading.addView(status,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=ui.dp(12) })
+        val document=LinearLayout(this).apply { orientation=1;setPadding(ui.dp(16),ui.dp(4),ui.dp(16),ui.dp(16)) }
+        val paper=ui.card(document);ui.badge(paper,"저장 내용 미리보기")
+        val preview=ui.text("잠시만 기다려 주세요.",15f).apply { setTextIsSelectable(true);setLineSpacing(ui.dp(5).toFloat(),1f) };paper.addView(preview)
+        root.addView(ScrollView(this).apply{addView(document)},LinearLayout.LayoutParams(-1,0,1f))
+        val actions=LinearLayout(this).apply { orientation=0;setPadding(ui.dp(16),ui.dp(12),ui.dp(16),ui.dp(12));setBackgroundColor(0xffffffff.toInt()) }
+        val save=ui.button("PDF 저장").apply { isEnabled=false };actions.addView(save,LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=ui.dp(8)})
+        val share=ui.button("PDF 공유",true).apply { isEnabled=false;contentDescription="카카오톡 등으로 PDF 공유" };actions.addView(share,LinearLayout.LayoutParams(0,-2,1f))
+        root.addView(actions);setContentView(root);root.requestApplyInsets()
         save.setOnClickListener{if(valid()&&pdf!=null)try{startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/pdf").putExtra(Intent.EXTRA_TITLE,"견적서.pdf"),72)}catch(_:Exception){notice("파일 저장 앱을 열지 못했습니다.")}}
         share.setOnClickListener{if(valid())pdf?.let{file->try{val uri=FileProvider.getUriForFile(this,packageName+".quote-files",file);val send=Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);send.clipData=android.content.ClipData.newRawUri("견적서",uri);startActivity(Intent.createChooser(send,"견적서 PDF 공유"))}catch(_:Exception){notice("공유할 앱을 열지 못했습니다.")}}}
         scope.launch{try{
             val result=AccountAuth.shared(this@QuoteExportActivity).assistantQuote(uid,company,intent.getStringExtra("site").orEmpty())
             check(result.optInt("revision")>0){"견적서를 먼저 저장한 뒤 PDF를 만들어 주세요."}
             val text=QuoteDocument.text(result.getJSONObject("document"));val file=withContext(Dispatchers.IO){createPdf(text)}
-            if(valid()){pdf=file;preview.text=text;status.text="저장된 견적서 · ${result.getInt("revision")}차 수정본\n아래 내용을 PDF로 저장하거나 공유합니다. 작성 화면의 미저장 내용은 포함되지 않습니다.";save.isEnabled=true;share.isEnabled=true}
+            if(valid()){pdf=file;preview.text=text;status.text="저장된 견적서 · ${result.getInt("revision")}차 수정본\n작성 화면에서 저장하지 않은 내용은 포함되지 않습니다.";save.isEnabled=true;share.isEnabled=true}
         }catch(e:CancellationException){throw e}catch(e:Exception){if(valid())status.text=e.message?:"PDF를 만들지 못했습니다."}}
     }
     private fun createPdf(text:String):File{

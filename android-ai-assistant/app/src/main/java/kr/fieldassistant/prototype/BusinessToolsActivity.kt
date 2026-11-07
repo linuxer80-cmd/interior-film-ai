@@ -15,6 +15,10 @@ class BusinessToolsActivity:Activity() {
     private val company get()=intent.getStringExtra("company").orEmpty()
     private val follow get()=intent.getStringExtra("mode")=="follow-ups"
     private lateinit var content:LinearLayout
+    private val ui by lazy { BusinessUi(this) }
+    private lateinit var progress:ProgressBar
+    private var followFilter="active"
+    private var workerFilter="all"
     private var busy=false
     private var taskNumber=0
     private var date=ScheduleDates.today()
@@ -26,34 +30,66 @@ class BusinessToolsActivity:Activity() {
     override fun onCreate(saved:Bundle?){
         super.onCreate(saved)
         if(uid.isBlank()||company.isBlank()){finish();return}
-        val root=LinearLayout(this).apply { orientation=1;setBackgroundColor(0xfff5f8f5.toInt());setOnApplyWindowInsetsListener { v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED } }
+        val root=LinearLayout(this).apply { orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener { v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED } }
         window.setDecorFitsSystemWindows(false);window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        root.addView(Button(this).apply{text="‹ 업무로 돌아가기";setOnClickListener{if(!busy)finish()}})
-        content=LinearLayout(this).apply{orientation=1;setPadding(24,12,24,24)}
+        root.addView(ui.button("‹ 업무").apply { setOnClickListener { if(!busy)finish() else notice("처리 중입니다. 잠시만 기다려 주세요.") } },LinearLayout.LayoutParams(-1,-2).apply { setMargins(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(8)) })
+        progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true;visibility=android.view.View.GONE }
+        root.addView(progress,LinearLayout.LayoutParams(-1,ui.dp(3)))
+        content=LinearLayout(this).apply{orientation=1;setPadding(ui.dp(18),ui.dp(12),ui.dp(18),ui.dp(24))}
         root.addView(ScrollView(this).apply{addView(content)},LinearLayout.LayoutParams(-1,0,1f));setContentView(root);root.requestApplyInsets();label("불러오는 중…");button("다시 불러오기"){load()};load()
     }
-    private fun label(s:String){content.addView(TextView(this).apply{text=s;textSize=17f;setTextColor(0xff193c31.toInt());setPadding(8,20,8,12)})}
-    private fun button(s:String,act:()->Unit){content.addView(Button(this).apply{text=s;setOnClickListener{if(valid()&&!busy)act()}})}
-    private fun task(run:suspend ()->Unit){if(busy||!valid())return;busy=true;val number=++taskNumber;scope.launch{try{run()}catch(e:CancellationException){throw e}catch(e:Exception){notice(e.message?:"다시 확인해 주세요.")}finally{if(number==taskNumber)busy=false}}}
+    private fun label(s:String){content.addView(ui.text(s,color=ui.muted),LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=ui.dp(14) })}
+    private fun button(s:String,primary:Boolean=false,parent:LinearLayout=content,act:()->Unit){parent.addView(ui.button(s,primary).apply { setOnClickListener { if(valid()&&!busy)act() else if(busy)notice("처리 중입니다. 잠시만 기다려 주세요.") } },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=ui.dp(10) })}
+    private fun task(run:suspend ()->Unit){if(busy||!valid())return;busy=true;progress.visibility=android.view.View.VISIBLE;val number=++taskNumber;scope.launch{try{run()}catch(e:CancellationException){throw e}catch(e:Exception){notice(e.message?:"다시 확인해 주세요.")}finally{if(number==taskNumber){busy=false;progress.visibility=android.view.View.GONE}}}}
+    private fun filters(values:List<Pair<String,String>>,selected:String,choose:(String)->Unit){
+        val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        values.forEach { (key,title)->row.addView(ui.button(title,key==selected).apply { contentDescription=title+if(key==selected)" · 선택됨" else "";setOnClickListener { if(!busy)choose(key) } },LinearLayout.LayoutParams(-2,-2).apply { marginEnd=ui.dp(8) }) }
+        content.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled=false;addView(row) },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=ui.dp(16) })
+    }
+    private fun empty(title:String,detail:String){val box=ui.card(content);box.addView(ui.text(title,18f,true));box.addView(ui.text(detail,color=ui.muted),LinearLayout.LayoutParams(-1,-2).apply { topMargin=ui.dp(8) })}
+    private fun selectDate(value:String,selected:(String)->Unit){
+        val day=runCatching { java.time.LocalDate.parse(value) }.getOrDefault(java.time.LocalDate.parse(ScheduleDates.today()))
+        android.app.DatePickerDialog(this,{_,y,m,d->selected(java.time.LocalDate.of(y,m+1,d).toString())},day.year,day.monthValue-1,day.dayOfMonth).apply {
+            datePicker.minDate=java.time.LocalDate.of(2000,1,1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            datePicker.maxDate=java.time.LocalDate.of(2099,12,31).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }.show()
+    }
     private suspend fun api(path:String,body:JSONObject?=null)=auth.businessTools(uid,company,path,body)
     private fun rows(v:JSONObject,key:String):List<JSONObject>{val a=v.optJSONArray(key)?:return emptyList();return (0 until a.length()).mapNotNull{a.optJSONObject(it)}}
     private fun followPath()="/api/admin/consultation-follow-ups?companyId=$company&offset=$offset"
-    private fun load(){task { val result=api(if(follow)followPath() else "/api/admin/worker-overview?companyId=$company&date=$date");if(!valid())return@task;content.removeAllViews();label(if(follow)"상담 후속 관리" else "시공자 관리 · $date");button("새로 확인"){load()};if(follow)renderFollow(result) else renderWorkers(result) }}
+    private fun load(){task { val result=api(if(follow)followPath() else "/api/admin/worker-overview?companyId=$company&date=$date");if(!valid())return@task;content.removeAllViews();ui.heading(content,if(follow)"상담 후속 관리" else "시공자 관리",if(follow)"다음 연락과 견적 진행을 한곳에서" else "함께하는 시공자와 날짜별 배정 현황");if(follow)renderFollow(result) else renderWorkers(result) }}
     private fun renderFollow(result:JSONObject){
-        label("앱과 웹에 함께 저장합니다. 구글 캘린더에는 추가하지 않습니다. 기존 휴대폰 상담은 대화의 ‘상담 진행 관리’에서 저장해 주세요.")
-        button("상담 추가"){edit(JSONObject().put("id",UUID.randomUUID().toString()).put("revision",0).put("stage","draft").put("action","estimate"))}
-        val items=rows(result,"items");if(items.isEmpty())label("저장된 상담이 없습니다.")
-        items.forEach { r->button(r.optString("title")+"\n"+ConsultationFollowUp.stages[r.optString("stage")]+" · "+ConsultationFollowUp.actions[r.optString("action")]+"\n연락일: "+r.optString("due_date").takeUnless{it=="null"}.orEmpty().ifBlank{"미지정"}){edit(r)} }
-        if(offset>0)button("이전 페이지"){offset-=100;load()};if(items.size==100)button("다음 페이지"){offset+=100;load()}
+        val items=rows(result,"items");val today=ScheduleDates.today()
+        val due=items.count { it.optString("stage")!="closed" && it.optString("due_date")!="null" && it.optString("due_date").isNotBlank() && it.optString("due_date")<=today }
+        val summary=ui.card(content);ui.badge(summary,"앱 · 웹 동기화")
+        summary.addView(ui.text("연락할 상담 ${due}건",22f,true));summary.addView(ui.text("현재 페이지 기준 · 오늘까지의 연락 예정일",12f,color=ui.muted))
+        button("+ 상담 추가",true){edit(JSONObject().put("id",UUID.randomUUID().toString()).put("revision",0).put("stage","draft").put("action","estimate"))}
+        button("새로 확인"){load()}
+        filters(listOf("active" to "진행 중","due" to "연락할 상담","all" to "전체"),followFilter) { followFilter=it;content.removeAllViews();ui.heading(content,"상담 후속 관리","다음 연락과 견적 진행을 한곳에서");renderFollow(result) }
+        val visible=items.filter { r->when(followFilter){"active"->r.optString("stage")!="closed";"due"->r.optString("stage")!="closed"&&r.optString("due_date").let { it!="null"&&it.isNotBlank()&&it<=today };else->true} }
+        if(visible.isEmpty())empty("표시할 상담이 없어요","다른 필터를 선택하거나 새 상담을 추가해 주세요.")
+        visible.forEach { r->
+            val box=ui.card(content);val date=r.optString("due_date").takeUnless{it=="null"}.orEmpty();val closed=r.optString("stage")=="closed"
+            val overdue=!closed&&date.isNotBlank()&&date<today
+            ui.badge(box,if(overdue)"연락일 지남" else ConsultationFollowUp.stages[r.optString("stage")]?:"상담",overdue)
+            box.addView(ui.text(r.optString("title"),19f,true))
+            box.addView(ui.text("다음 할 일  ·  "+ConsultationFollowUp.actions[r.optString("action")],color=ui.muted),LinearLayout.LayoutParams(-1,-2).apply { topMargin=ui.dp(8) })
+            box.addView(ui.text(if(date==today)"오늘 연락 예정" else "연락일  ·  "+date.ifBlank{"미지정"},14f,!closed&&date==today),LinearLayout.LayoutParams(-1,-2).apply { topMargin=ui.dp(4);bottomMargin=ui.dp(14) })
+            button("진행 수정",parent=box){edit(r)}
+        }
+        label("구글 캘린더에는 등록하지 않습니다. 기존 휴대폰 상담은 대화의 ‘상담 진행 관리’에서 저장하면 연결됩니다.")
+        if(offset>0)button("‹ 이전 페이지"){offset-=100;load()};if(items.size==100)button("다음 페이지 ›"){offset+=100;load()}
     }
     private fun edit(row:JSONObject){
         val form=LinearLayout(this).apply{orientation=1;setPadding(24,12,24,12)}
-        fun input(h:String,v:String)=EditText(this).apply{hint=h;setText(v);setSingleLine();form.addView(this)}
+        fun input(h:String,v:String):EditText { form.addView(ui.text(h,13f,true),LinearLayout.LayoutParams(-1,-2).apply { topMargin=ui.dp(12) });return EditText(this).apply{hint=h;setText(v);setSingleLine();minHeight=ui.dp(48);form.addView(this)} }
         val title=input("상담 이름",row.optString("title"));title.filters=arrayOf(android.text.InputFilter.LengthFilter(200))
         val dateInput=input("연락일 YYYY-MM-DD · 선택",row.optString("due_date").takeUnless{it=="null"}.orEmpty())
-        fun choice(options:Map<String,String>,value:String)=Spinner(this).apply{adapter=ArrayAdapter(this@BusinessToolsActivity,android.R.layout.simple_spinner_dropdown_item,options.values.toList());setSelection(options.keys.indexOf(value).coerceAtLeast(0));form.addView(this)}
-        val stage=choice(ConsultationFollowUp.stages,row.optString("stage"));val action=choice(ConsultationFollowUp.actions,row.optString("action"))
-        val dialog=AlertDialog.Builder(this).setTitle("상담 진행 수정").setView(form).setNegativeButton("닫기",null).setPositiveButton("저장",null).create()
+        form.addView(ui.button("달력에서 연락일 선택").apply { setOnClickListener { selectDate(dateInput.text.toString()) { dateInput.setText(it) } } })
+        form.addView(ui.button("연락일 비우기").apply { setOnClickListener { dateInput.setText("") } })
+        fun choice(options:Map<String,String>,value:String)=Spinner(this).apply{minimumHeight=ui.dp(48);adapter=ArrayAdapter(this@BusinessToolsActivity,android.R.layout.simple_spinner_dropdown_item,options.values.toList());setSelection(options.keys.indexOf(value).coerceAtLeast(0));form.addView(this)}
+        form.addView(ui.text("상담 단계",13f,true));val stage=choice(ConsultationFollowUp.stages,row.optString("stage"));form.addView(ui.text("다음 할 일",13f,true));val action=choice(ConsultationFollowUp.actions,row.optString("action"))
+        val dialog=AlertDialog.Builder(this).setTitle("상담 진행 수정").setView(ScrollView(this).apply { addView(form) }).setNegativeButton("닫기",null).setPositiveButton("저장",null).create()
         dialog.setOnShowListener { dialog.getButton(-1).setOnClickListener {
             val normalized=try{ConsultationFollowUp.normalizedDate(dateInput.text.toString())}catch(e:Exception){dateInput.error=e.message;return@setOnClickListener}
             if(title.text.isBlank()){title.error="상담 이름을 입력해 주세요.";return@setOnClickListener}
@@ -62,13 +98,23 @@ class BusinessToolsActivity:Activity() {
         } };dialog.show()
     }
     private fun renderWorkers(result:JSONObject){
-        label("표시 날짜의 우리 업체 배정 기준입니다. 다른 업체 일정과 개인 휴무는 시공자에게 확인해 주세요.")
-        button("조회 날짜 변경"){val input=EditText(this).apply{setText(date);hint="YYYY-MM-DD"};AlertDialog.Builder(this).setTitle("배정 조회 날짜").setView(input).setPositiveButton("확인"){_,_->val value=input.text.toString();if(ConsultationFollowUp.validDate(value)){date=value;load()}else notice("날짜를 확인해 주세요.")}.setNegativeButton("취소",null).show()}
-        button("공개 시공자 찾기 · 연결 요청"){searchForm()}
-        button("보낸 연결 요청 확인"){sent()}
         val workers=rows(result,"workers");val relations=rows(result,"relationships");val assignments=rows(result,"assignments")
-        if(workers.isEmpty())label("등록된 시공자가 없습니다.")
-        workers.forEach{w->val type=relations.find{it.optString("worker_id")==w.optString("id")}?.optString("relationship_type");val count=assignments.count{it.optString("worker_id")==w.optString("id")};label(w.optString("name")+" · "+when(type){"employee"->"직원";"freelancer"->"프리랜서";else->"연결 미등록"}+"\n"+if(!w.optBoolean("is_active",true))"비활성" else if(count>0)"이 날짜 배정 ${count}건" else "이 날짜 우리 업체 배정 없음")}
+        val box=ui.card(content);ui.badge(box,"우리 업체 배정 기준");box.addView(ui.text(date,22f,true));box.addView(ui.text("등록 ${workers.size}명 · 배정 ${assignments.map{it.optString("worker_id")}.distinct().size}명",color=ui.muted))
+        button("날짜 선택",parent=box){selectDate(date){date=it;load()}}
+        button("+ 공개 시공자 찾기",true){searchForm()}
+        button("보낸 연결 요청"){sent()}
+        button("새로 확인"){load()}
+        filters(listOf("all" to "전체","employee" to "직원","freelancer" to "프리랜서"),workerFilter){workerFilter=it;content.removeAllViews();ui.heading(content,"시공자 관리","함께하는 시공자와 날짜별 배정 현황");renderWorkers(result)}
+        val visible=workers.filter { w->workerFilter=="all"||relations.any{it.optString("worker_id")==w.optString("id")&&it.optString("relationship_type")==workerFilter} }
+        if(visible.isEmpty())empty("표시할 시공자가 없어요","다른 유형을 선택하거나 공개 시공자를 찾아 연결해 주세요.")
+        visible.forEach { w->
+            val type=relations.find{it.optString("worker_id")==w.optString("id")}?.optString("relationship_type")
+            val count=assignments.count{it.optString("worker_id")==w.optString("id")}
+            val card=ui.card(content);ui.badge(card,when(type){"employee"->"직원";"freelancer"->"프리랜서";else->"연결 미등록"})
+            card.addView(ui.text(w.optString("name"),20f,true))
+            card.addView(ui.text(if(!w.optBoolean("is_active",true))"비활성" else if(count>0)"배정된 현장 ${count}건" else "우리 업체 배정 없음",color=if(count>0)ui.accent else ui.muted),LinearLayout.LayoutParams(-1,-2).apply{topMargin=ui.dp(8)})
+        }
+        label("다른 업체 일정과 개인 휴무는 시공자에게 확인해 주세요.")
     }
     private fun searchForm(){val input=EditText(this).apply{hint="이름 · 빈칸이면 전체";setText(query);filters=arrayOf(android.text.InputFilter.LengthFilter(60))};AlertDialog.Builder(this).setTitle("공개 시공자 검색").setView(input).setPositiveButton("검색"){_,_->query=input.text.toString();page=0;search()}.setNegativeButton("취소",null).show()}
     private fun search(){task {val result=api("/api/worker-directory?mode=search&query="+java.net.URLEncoder.encode(query,"UTF-8")+"&page=$page");if(!valid())return@task;content.removeAllViews();label("공개 시공자 · ${page+1}페이지");button("내 시공자 목록"){load()};button("검색 조건 변경"){searchForm()};val profiles=rows(result,"profiles");if(profiles.isEmpty())label("검색 결과가 없습니다.");profiles.forEach{r->label(r.optString("name")+" · "+r.optString("region")+"\n경력 "+r.optInt("experience_years")+"년");when{r.optBoolean("connected")->label("이미 연결된 시공자");r.optString("request_status")=="pending"->label("연결 수락 대기 중");else->button("${r.optString("name")} · 연결 요청"){request(r)}}};if(page>0)button("이전"){page--;search()};if(result.optBoolean("hasMore"))button("다음"){page++;search()} }}
