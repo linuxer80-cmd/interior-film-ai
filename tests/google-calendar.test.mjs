@@ -18,3 +18,12 @@ test('API keeps access token out of URL, honors ETag and reports expired auth',a
 test('identical event content skips both insert and update',async()=>{const [event]=await plan();let writes=0;const result=await writeCalendarEvent('token',event,'user',async(t,p,o)=>{if(o)writes++;return {...event,etag:'version',htmlLink:'extra metadata'}});assert.equal(writes,0);assert.equal(result.skipped,true);});
 test('site summary includes film variant, full address and memo without financial fields',()=>{const summary=siteCalendarSummary({...site,memo:'거주중 · 주차 B1',calendar_materials:[{brand:'현대보닥',product_code:'GS115',memo:'주방',unit_price:5800},{brand:'영림',product_code:'PX450',price_type:'fire'}],approved_amount:999999},from,'https://app.test');assert.match(summary,/321-2002/);assert.match(summary,/GS115 · 비방염 · 주방/);assert.match(summary,/PX450 · 방염/);assert.match(summary,/거주중 · 주차 B1/);assert.ok(!summary.includes('5800'));assert.ok(!summary.includes('999999'));});
 test('summary hydration only reads assigned sites in the chosen range and fails on missing material data',async()=>{const calls=[];const detailed=await enrichCalendarSites([site,{...site,site_id:'cancelled',status:'cancelled'},{...site,site_id:'later',assigned_dates:[{work_date:'2027-01-01'}]}],from,to,async id=>{calls.push(id);return {site:{...site,memo:'출입 안내'},materials:[]}});assert.deepEqual(calls,['site']);assert.equal(detailed[0].memo,'출입 안내');await assert.rejects(()=>enrichCalendarSites([site],from,to,async()=>({site,materials:[],materialsError:'failed'})));});
+
+ test('consultations never export dates or events, including legacy status and assigned dates',async()=>{
+  for(const status of [{status:'consulting'},{site_status:'consulting'}]) {
+    const candidate={...site,...status};
+    assert.deepEqual(assignedDays(candidate,from,to),[]);
+    assert.deepEqual(await siteCalendarEvents([candidate],'user',from,to,'https://app.test',webcrypto),[]);
+  }
+  assert.equal((await siteCalendarEvents([{...site,status:'scheduled'}],'user',from,to,'https://app.test',webcrypto)).length,2);
+});
