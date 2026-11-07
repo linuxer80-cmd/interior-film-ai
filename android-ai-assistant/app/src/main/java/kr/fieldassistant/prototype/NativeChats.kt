@@ -190,7 +190,7 @@ internal class NativeChats(
         var photoBytes:ByteArray?=null;var photoMime="";var photoVersion=0
         val photoButton=Button(activity).apply { text="사진 첨부" }
         val attachmentPreview=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER;visibility=android.view.View.GONE;contentDescription="보낼 사진 미리보기" }
-        if(kind=="customer") { root.addView(photoButton);root.addView(attachmentPreview,LinearLayout.LayoutParams(-1,dp(96))) }
+        root.addView(photoButton);root.addView(attachmentPreview,LinearLayout.LayoutParams(-1,dp(96)))
         root.addView(compose)
         lateinit var dialog:AlertDialog
         lateinit var refresh:()->Unit
@@ -205,21 +205,21 @@ internal class NativeChats(
         header.addView(reload,LinearLayout.LayoutParams(dp(48),dp(52)))
         dialog=AlertDialog.Builder(activity).setCustomTitle(header).setView(root).create()
         currentDialog=dialog
-        val handler=Handler(Looper.getMainLooper());var closed=false;var loading=false;var pendingRefresh=false;var sending=false
+        val handler=Handler(Looper.getMainLooper());var closed=false;var loading=false;var pendingRefresh=false;var sending=false;var preparingPhoto=false
         var lastVersion="";var firstLoad=true;var pendingText="";var pendingId="";var lastAcknowledged="";var chatAllowed=true
         var historyBefore="";var historyLoading=false;var historyAnchor:Int?=null
         val history=linkedMapOf<String,JSONObject>()
         var historyHasOlder=true
         var latestCustomerView:TextView?=null;var latestCustomerAt=""
         photoButton.setOnClickListener {
-            if(sending || !valid()) return@setOnClickListener
+            if(sending || preparingPhoto || !valid()) return@setOnClickListener
             if(photoBytes!=null) { photoBytes=null;photoMime="";photoVersion++;photoButton.text="사진 첨부";attachmentPreview.setImageDrawable(null);attachmentPreview.visibility=android.view.View.GONE;return@setOnClickListener }
             photoResult={ uri ->
                 if(!closed && dialog.isShowing && valid()) scope.launch {
+                    preparingPhoto=true;photoButton.isEnabled=false
                     try {
-                        val mime=activity.contentResolver.getType(uri).orEmpty()
-                        check(mime in listOf("image/jpeg","image/png","image/webp")) { "JPG·PNG·WebP 사진을 선택해 주세요." }
-                        val bytes=withContext(Dispatchers.IO) { activity.contentResolver.openInputStream(uri)?.use { SecureTransport.readBounded(it,2*1024*1024) } ?: error("사진을 열지 못했습니다.") }
+                        val mime="image/jpeg"
+                        val bytes=withContext(Dispatchers.IO) { ChatPhotoEncoder.encode(activity,uri) }
                         val preview=withContext(Dispatchers.IO) {
                             val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true };BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
                             val sample=ChatPhotoLoader.sampleSize(bounds.outWidth,bounds.outHeight,480) ?: error("사진 크기를 확인해 주세요.")
@@ -227,7 +227,8 @@ internal class NativeChats(
                         }
                         if(!closed && dialog.isShowing && valid()) { photoBytes=bytes;photoMime=mime;photoVersion++;photoButton.text="사진 첨부됨 · 누르면 취소";attachmentPreview.setImageBitmap(preview);attachmentPreview.visibility=android.view.View.VISIBLE } else preview.recycle()
                     } catch(e:CancellationException) { throw e }
-                      catch(_:Exception) { if(!closed && valid()) toast("사진을 불러오지 못했습니다. JPG·PNG·WebP, 2MB 이하 사진을 선택해 주세요.") }
+                      catch(_:Exception) { if(!closed && valid()) toast("사진을 불러오지 못했습니다. 32MB 이하의 다른 사진을 선택해 주세요.") }
+                    finally {preparingPhoto=false;if(!closed && !sending) photoButton.isEnabled=true}
                 }
             }
             try { activity.startActivityForResult(android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),1008) }
@@ -333,7 +334,7 @@ internal class NativeChats(
                             messages.addView(row,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(5),0,dp(5)) })
                             if(kind=="customer" && !mine && m.optString("created_at")==latestCustomerAt) latestCustomerView=item
                             if(kind=="team" && !mine && m.optString("id").matches(Regex("^[0-9a-fA-F-]{36}$"))) teamViews[m.optString("id")]=item
-                            if(kind=="customer" && m.optBoolean("has_image")) {
+                            if(m.optBoolean("has_image")) {
                                 val photoBefore=try { java.time.OffsetDateTime.parse(m.optString("created_at")).plusNanos(1000).toString() } catch(_:Exception) { "" }
                                 val id=m.optString("id");val url=m.optString("image_url").takeUnless { it=="null" }.orEmpty()
                                 val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER;contentDescription="채팅 사진 확대해서 보기" }
@@ -349,7 +350,7 @@ internal class NativeChats(
                                         preview.failed=false;preview.hint.text="사진을 다시 확인하는 중…"
                                         scope.launch {
                                             try {
-                                                val fresh=auth.nativeChat(uid,company,"customer",target,before=photoBefore)
+                                                val fresh=auth.nativeChat(uid,company,kind,target,date,before=if(kind=="customer") photoBefore else "")
                                                 if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
                                                 val items=fresh.getJSONArray("messages")
                                                 preview.url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
@@ -361,7 +362,7 @@ internal class NativeChats(
                                         preview.opening=true;preview.hint.visibility=android.view.View.VISIBLE;preview.hint.text="사진을 여는 중…"
                                         scope.launch {
                                             try {
-                                                val fresh=auth.nativeChat(uid,company,"customer",target,before=photoBefore)
+                                                val fresh=auth.nativeChat(uid,company,kind,target,date,before=if(kind=="customer") photoBefore else "")
                                                 if(closed || !dialog.isShowing || !valid() || previews[id]!==preview) return@launch
                                                 val items=fresh.getJSONArray("messages")
                                                 val url=(0 until items.length()).mapNotNull { items.optJSONObject(it) }.find { it.optString("id")==id }?.optString("image_url").orEmpty()
@@ -404,7 +405,7 @@ internal class NativeChats(
                         if(anchor!=null) scroll.post { scroll.scrollTo(0,(messages.height-anchor).coerceAtLeast(0)) }
                         else if(nearBottom) scroll.post { scroll.fullScroll(android.view.View.FOCUS_DOWN) }
                     }
-                    if(kind=="customer") { handler.removeCallbacks(scanPhotos);scroll.post { handler.post(scanPhotos) } }
+                    handler.removeCallbacks(scanPhotos);scroll.post { handler.post(scanPhotos) }
                     teamReadReady=kind=="team" && data.optBoolean("readReady")
                     if(teamReadReady) { handler.removeCallbacks(markVisible);handler.postDelayed(markVisible,500) }
                     chatAllowed=kind!="team" || data.optBoolean("chatReady");send.isEnabled=chatAllowed && !sending
@@ -427,14 +428,14 @@ internal class NativeChats(
         }
         send.setOnClickListener {
             val text=input.text.toString().trim()
-            if(!valid() || sending || (text.isBlank() && photoBytes==null) || text.length>2000) return@setOnClickListener
+            if(!valid() || sending || preparingPhoto || (text.isBlank() && photoBytes==null) || text.length>2000) return@setOnClickListener
             if(text!=pendingText || pendingPhotoVersion!=photoVersion || pendingId.isBlank()) { pendingText=text;pendingPhotoVersion=photoVersion;pendingId=UUID.randomUUID().toString() }
             if(photoBytes==null) drafts.edit().putString(draftKey+":sendId",pendingId).putString(draftKey+":sendText",pendingText).apply()
             val id=pendingId;val attached=photoBytes;val attachedMime=photoMime;val attachedVersion=photoVersion;sending=true;send.isEnabled=false;photoButton.isEnabled=false
             val payload=if(kind=="customer") JSONObject().put("messageId",id).put("text",text) else JSONObject().put("id",id).put("body",text)
             scope.launch {
                 try {
-                    if(attached!=null) auth.sendCustomerPhoto(uid,company,target,id,text,attached,attachedMime)
+                    if(attached!=null) auth.sendCustomerPhoto(uid,company,target,id,text,attached,attachedMime,kind,date)
                     else auth.nativeChat(uid,company,kind,target,date,"POST",payload)
                     if(valid() && drafts.getString(draftKey+":sendId","")==id) {
                         val edit=drafts.edit().remove(draftKey+":sendId").remove(draftKey+":sendText")
@@ -489,7 +490,7 @@ internal object ChatPhotoUrl {
         val path=uri.path.orEmpty()
         uri.host.equals(server.host,true) && uri.port in listOf(-1,443) &&
             thread.matches(Regex("^[0-9a-fA-F-]{36}$")) &&
-            path.startsWith("/storage/v1/object/sign/customer-chat/$thread/") && !path.split('/').contains("..")
+            (path.startsWith("/storage/v1/object/sign/customer-chat/$thread/") || Regex("^/storage/v1/object/sign/work-photos/sites/[0-9a-fA-F-]{36}/$thread/team-chat/[0-9a-fA-F-]{36}/[0-9a-fA-F-]+\\.jpg$").matches(path)) && !path.split('/').contains("..")
     } catch(_:Exception) { false }
 }
 

@@ -1,10 +1,11 @@
+import {readChatBody} from '../lib/chatRequestBody.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import {normalizeChatPhoto,CHAT_PHOTO_MAX} from '../lib/customerChatPhoto.mjs';
 import {readFileSync} from 'node:fs';
-const source=readFileSync(new URL('../lib/customerChatServer.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ','');
-const {readChatBody,chatMessages}=new Function(source+';return {readChatBody,chatMessages};')();
+const source=readFileSync(new URL('../lib/customerChatServer.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export \{.*\} from .*;\n/gm,'').replaceAll('export ','');
+const {chatMessages}=new Function(source+';return {chatMessages};')();
 test('photo is resized, converted to JPEG and private metadata removed',async()=>{
  const input=await sharp({create:{width:2200,height:1100,channels:3,background:'#226644'}}).withMetadata().png().toBuffer();
  const output=await normalizeChatPhoto(new File([input],'photo.png',{type:'image/png'}));

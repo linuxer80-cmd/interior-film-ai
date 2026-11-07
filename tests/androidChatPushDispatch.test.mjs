@@ -58,3 +58,14 @@ test('only an accepted, enabled app is preferred over browser delivery',async()=
  result=await dispatchAndroidChat(db,metadata,{send:async()=>({state:'failed'})});
  assert.deepEqual(result.acceptedUserIds,[]);
 });
+
+test('authorized preview uses persisted message and site, ignores caller text, and suppresses revoked access',async()=>{
+ const {db,rows}=fixture();rows.sites[0].site_name='영등포 현장';rows.worker_team_messages[0].body='자재 도착했습니다';
+ rows.profiles.push({id:ids.senderId,name:'김팀장'});
+ let sent;
+ await dispatchAndroidChat(db,{...ids,kind:'team',body:'forged',recipients:[ids.recipientId]},{send:async data=>{sent=data;return {state:'accepted'};}});
+ assert.equal(sent.title,'팀 채팅 · 영등포 현장');assert.equal(sent.body,'김팀장: 자재 도착했습니다');
+ rows.site_daily_assignments=[];sent=null;
+ await dispatchAndroidChat(db,{...ids,kind:'team',recipients:[ids.recipientId]},{send:async data=>{sent=data;return {state:'accepted'};}});
+ assert.equal(sent,null);
+});

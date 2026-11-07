@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash,randomBytes} from 'node:crypto';
-const source=readFileSync(new URL('../lib/customerChatServer.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ','');
+const source=readFileSync(new URL('../lib/customerChatServer.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export \{.*\} from .*;\n/gm,'').replaceAll('export ','');
 function fixture({cookie='',thread=null,company='company-a',ownerCompany='company-a',previous=null}={}){
  const queries=[];const db={from(table){const filters=[];const q={select(){return q},eq(k,v){filters.push([k,v]);return q},maybeSingle(){return q},order(){return q},limit(){return q},lt(){return q},insert(value){queries.push({table,insert:value});return Promise.resolve({error:null})},then(resolve){queries.push({table,filters});let data=table==='companies'?{id:company,company_name:'업체'}:table==='customer_chat_threads'?thread:previous;return Promise.resolve({data,error:null}).then(resolve)}};return q;}};
  const funcs=new Function('createHash','randomBytes','createClient','NextResponse','priceOwner',source+';return {visitorChat,ownerChat,chatMessage,chatOrigin,saveChat};')(createHash,randomBytes,()=>db,{json:()=>({cookies:{set(){}}})},async()=>({db,companyId:ownerCompany}));
