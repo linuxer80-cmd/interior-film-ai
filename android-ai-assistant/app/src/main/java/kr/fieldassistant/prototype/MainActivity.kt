@@ -124,10 +124,15 @@ class MainActivity : Activity() {
     /** A single inset owner reserves system bars, cutouts and the keyboard.
      * Absolute wrapper padding avoids accumulating insets after repeated dispatch. */
     private var visibleConversationKey: String? = null
+    private var consultationScroll: ScrollView? = null
+    private var consultationScreen: List<String?>? = null
+    private var consultationMessageCount = 0
+    private var consultationDetailsExpanded = false
     private var homeBottomNavigation: View? = null
     private var homeQuickActions: View? = null
     private fun setAssistantContent(content: View) {
         visibleConversationKey=null
+        consultationScroll=null
         homeBottomNavigation=null
         homeQuickActions=null
         val safeArea=FrameLayout(this).apply {
@@ -3974,11 +3979,18 @@ class MainActivity : Activity() {
             item.optJSONObject("chat_draft"),item.optJSONObject("registration"),item.optString("transcript"),
             item.optString("site_id"),item.optString("preview_target_id"),callMatches,consultationDisposition(item),id in savingRegistrations).toString()
         if(visibleConversationKey==key) return
+        val screen=listOf(account?.userId,selectedCompany()?.id,selectedCompany()?.role,id)
+        val previousScroll=consultationScroll?.takeIf { consultationScreen==screen }
+        val previousY=previousScroll?.scrollY
+        val previousCount=consultationMessageCount
+        if(consultationScreen!=screen) consultationDetailsExpanded=false
+        consultationScreen=screen
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.rgb(249,247,242)) }
         setAssistantContent(page)
         visibleConversationKey=key
         chatHeader(page)
-        val scroll=ScrollView(this)
+        val scroll=ScrollView(this).apply { isFillViewport=true }
+        consultationScroll=scroll
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(4),dp(8),dp(4),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val messages=item.optJSONArray("chat_messages") ?: JSONArray()
@@ -3995,7 +4007,8 @@ class MainActivity : Activity() {
             val status=when {
                 item.optString("site_id").isNotBlank() -> "등록 완료"
                 id in savingRegistrations -> "저장 확인 중"
-                consultationDisposition(item)!="active" -> "검토 종료"
+                consultationDisposition(item)=="declined" -> "등록 안 함"
+                consultationDisposition(item)!="active" -> "나중에 검토"
                 else -> "등록 전 확인"
             }
             summary.addView(text(status,12f,true,Color.rgb(49,92,72)))
@@ -4005,14 +4018,16 @@ class MainActivity : Activity() {
                 summary.addView(text(label,12f,false,Color.rgb(108,119,111)).apply { setPadding(0,dp(8),0,dp(2)) })
                 summary.addView(text(value,15f).apply { setTextIsSelectable(true) })
             }
-            body.addView(summary,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(16),0,dp(4)) })
+            body.addView(summary,0,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(16),0,dp(4)) })
         }
-        val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;visibility=View.GONE }
-        val detailsToggle=button("통화 원문 · 상세 확인 펼치기",false) { }
+        val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;visibility=if(consultationDetailsExpanded) View.VISIBLE else View.GONE }
+        val detailsLabel=if(item.optBoolean("manual_site")) "상세 확인" else "통화 원문 · 상세 확인"
+        val detailsToggle=button(detailsLabel+if(consultationDetailsExpanded) " 접기" else " 펼치기",false) { }
         detailsToggle.setOnClickListener {
             val expanded=details.visibility!=View.VISIBLE
+            consultationDetailsExpanded=expanded
             details.visibility=if(expanded) View.VISIBLE else View.GONE
-            detailsToggle.text=if(expanded) "통화 원문 · 상세 확인 접기" else "통화 원문 · 상세 확인 펼치기"
+            detailsToggle.text=detailsLabel+if(expanded) " 접기" else " 펼치기"
             detailsToggle.contentDescription=detailsToggle.text
         }
         body.addView(detailsToggle,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,0) })
@@ -4027,6 +4042,7 @@ class MainActivity : Activity() {
 
         if(!item.optBoolean("manual_site") && id.startsWith("content:") && selectedCompany()?.role=="관리자")
             addButton(details,"서버 AI로 다시 분석",false) { selectedCompany()?.takeIf { it.role=="관리자" }?.let { confirmCloudRecording(Uri.parse(id),it) } }
+        if(details.childCount==0) detailsToggle.visibility=View.GONE
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
         val paused=consultationDisposition(item)!="active"
@@ -4095,7 +4111,15 @@ class MainActivity : Activity() {
             }) }
             row.addView(input,LinearLayout.LayoutParams(0,dp(52),1f));row.addView(TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(40,48,43),24);contentDescription="메시지 보내기";setOnClickListener { if(done) { chatId=null;answerHome(input.text.toString()) } else answerChat(id,input.text.toString()) } },LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
         }
-        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        consultationMessageCount=messages.length()
+        scroll.post {
+            if(consultationScroll!==scroll) return@post
+            when {
+                previousY==null -> scroll.scrollTo(0,0)
+                messages.length()>previousCount -> scroll.fullScroll(View.FOCUS_DOWN)
+                else -> scroll.scrollTo(0,previousY)
+            }
+        }
     }
     @Deprecated("Android back callback")
     override fun onBackPressed() { if(settingsOpen) { settingsOpen=false;render() } else if(chatId!=null) { chatId=null;chatInput="";render() } else if(dailyExpanded) { dailyExpanded=false;openDailyOnReady=false;render() } else super.onBackPressed() }
