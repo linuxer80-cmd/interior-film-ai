@@ -4367,8 +4367,7 @@ class MainActivity : Activity() {
             })
         }
         row.addView(input,LinearLayout.LayoutParams(0,dp(50),1f))
-        val voice=TextView(this).apply {
-            text="🎙";textSize=22f;gravity=Gravity.CENTER;contentDescription="음성으로 입력"
+        val voice=assistantInputIcon(R.drawable.ic_assistant_mic,"음성으로 입력").apply {
             setOnClickListener {
                 val speech=Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -4377,9 +4376,8 @@ class MainActivity : Activity() {
                 try { startActivityForResult(speech,1002) } catch(_:ActivityNotFoundException) { message("음성 입력 앱을 찾을 수 없습니다.") }
             }
         }
-        row.addView(voice,LinearLayout.LayoutParams(dp(44),dp(44)))
-        val photo=TextView(this).apply {
-            text="📷";textSize=20f;gravity=Gravity.CENTER;contentDescription="현장 사진 추가"
+        row.addView(voice,LinearLayout.LayoutParams(dp(48),dp(48)))
+        val photo=assistantInputIcon(R.drawable.ic_assistant_photo,"현장 사진 추가").apply {
             setOnClickListener {
                 val company=selectedCompany()
                 val id=if(company!=null && prefs.getString("selected_site_company",null)==company.id) prefs.getString("selected_site_id","").orEmpty() else ""
@@ -4387,7 +4385,7 @@ class MainActivity : Activity() {
                 else openSiteAction(company.id,id,"photos")
             }
         }
-        row.addView(photo,LinearLayout.LayoutParams(dp(44),dp(44)))
+        row.addView(photo,LinearLayout.LayoutParams(dp(48),dp(48)))
         val send=TextView(this).apply { text="↑";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=bg(Color.rgb(35,84,59),24);contentDescription="메시지 보내기";setOnClickListener { answerHome(input.text.toString()) } }
         row.addView(send,LinearLayout.LayoutParams(dp(44),dp(44)));page.addView(row)
         val navigation=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(4),0,0) }
@@ -4777,6 +4775,13 @@ class MainActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun text(value: String, size: Float=14f, bold: Boolean=false, color: Int=Color.rgb(43,62,51)): TextView = TextView(this).apply {
         this.text=value; textSize=size; setTextColor(color); if(bold)setTypeface(null,Typeface.BOLD); setLineSpacing(dp(3).toFloat(),1f)
+    }
+    private fun assistantInputIcon(resource:Int,label:String)=ImageButton(this).apply {
+        setImageResource(resource);contentDescription=label;tooltipText=label
+        scaleType=ImageView.ScaleType.CENTER_INSIDE;setPadding(dp(12),dp(12),dp(12),dp(12))
+        isFocusable=true
+        val surface=bg(Color.rgb(244,247,243),18)
+        background=android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.rgb(216,229,218)),surface,bg(Color.WHITE,18))
     }
     private fun bg(color: Int, radius: Int=16, border: Int?=null) = GradientDrawable().apply { setColor(color); cornerRadius=dp(radius).toFloat(); if(border!=null)setStroke(dp(1),border) }
     private fun button(label: String, primary: Boolean=true, action:()->Unit): Button = Button(this).apply {
