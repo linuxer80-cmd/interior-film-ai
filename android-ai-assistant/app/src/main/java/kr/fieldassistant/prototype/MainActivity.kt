@@ -61,7 +61,7 @@ class MainActivity : Activity() {
     private var sessionEpoch = 0
     private var analysisJob: Job? = null
     private var offlineQueueJob: Job? = null
-    private data class ReportVoiceRequest(val uid:String,val companyId:String,val siteId:String,val input:EditText)
+    private data class ReportVoiceRequest(val uid:String,val companyId:String,val siteId:String,val input:EditText,val memo:EditText,val role:String)
     private var reportVoiceRequest:ReportVoiceRequest?=null
     private val offlineQueue = mutableListOf<String>()
     private val offlineQueued = mutableSetOf<String>()
@@ -382,10 +382,16 @@ class MainActivity : Activity() {
             if(resultCode==RESULT_OK && request!=null && account?.userId==request.uid && selectedCompany()?.id==request.companyId) {
                 val spoken=data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty().trim()
                 if(spoken.isNotBlank()) {
-                    val existing=request.input.text.toString().trimEnd()
-                    val combined=if(existing.isBlank()) spoken else existing+"\n"+spoken
-                    if(combined.length>5000) message("작업 내용은 5,000자까지 입력할 수 있습니다.")
-                    else { request.input.setText(combined);request.input.setSelection(combined.length) }
+                    val draft=SpokenReportDraft.parse(spoken)
+                    AlertDialog.Builder(this).setTitle("말로 작성한 보고서 확인")
+                        .setMessage(draft.preview()+"\n\n확인하면 작성 중인 내용에 추가합니다. 자재 사용량과 경비 금액은 별도 등록이 필요하며, 보고서는 아직 제출되지 않습니다.")
+                        .setNegativeButton("다시 입력",null).setPositiveButton("초안에 추가") { _,_ ->
+                            if(account?.userId!=request.uid || selectedCompany()?.id!=request.companyId || selectedCompany()?.role!=request.role || !request.input.isAttachedToWindow) return@setPositiveButton
+                            val summary=listOf(request.input.text.toString().trim(),draft.work).filter { it.isNotBlank() }.joinToString("\n")
+                            val memo=listOf(request.memo.text.toString().trim(),draft.notes).filter { it.isNotBlank() }.joinToString("\n")
+                            if(summary.length>5000 || memo.length>5000) message("내용은 각 5,000자까지 입력할 수 있습니다.")
+                            else { request.input.setText(summary);request.memo.setText(memo) }
+                        }.show()
                 }
             }
             return
@@ -2904,7 +2910,7 @@ class MainActivity : Activity() {
             actions.addView(Button(this).apply { text="완료보고 제출 준비";setOnClickListener { prepareNativeReportSubmit(uid,company,siteId,siteName) } })
             dialog.setView(ScrollView(this).apply { addView(actions) })
         }
-        if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("작성 내용 임시 저장") { _,_ ->
+        if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("말로 보고서 작성") { _,_ ->
             if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId,report?.takeIf { it.optString("review_status")=="rejected" })
             else message("계정과 업체를 다시 확인해 주세요.")
         }
@@ -3248,13 +3254,13 @@ class MainActivity : Activity() {
             hint=labels[i];setText(prefs.getString(prefix+key,null) ?: original);filters=arrayOf(android.text.InputFilter.LengthFilter(5000));minLines=if(i==1) 3 else 1
             form.addView(this)
         } }
-        addButton(form,"말로 작업 내용 입력",false) {
+        addButton(form,"말로 완료보고 초안 만들기",true) {
             if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@addButton }
             val speech=Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"ko-KR")
-                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"오늘 완료한 작업을 말씀해 주세요")
-            reportVoiceRequest=ReportVoiceRequest(uid,company.id,siteId,inputs[1])
+                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"예: 문 3개 완료, 필름 12m 사용, 주차비 만 원")
+            reportVoiceRequest=ReportVoiceRequest(uid,company.id,siteId,inputs[1],inputs[2],company.role)
             try { startActivityForResult(speech,1007) } catch(_:ActivityNotFoundException) { reportVoiceRequest=null;message("음성 입력 앱을 찾지 못했습니다.") }
         }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 내용 임시 저장")
@@ -3697,8 +3703,9 @@ class MainActivity : Activity() {
         val data:DailyAssistant.Briefing?=null,val error:Boolean=false,val loadedAt:Long=0,val receivableNote:String="")
     private var dailyState:DailyState?=null
     private var openDailyOnReady=false
+    private var briefingRequested=false
     private fun lookupBriefing(request:AssistantRequests.Request) {
-        dailyExpanded=true;openDailyOnReady=true;loadDailyAssistant(force=true);render()
+        briefingRequested=true;loadDailyAssistant(force=true);render()
     }
     private fun loadDailyAssistant(force:Boolean=false) {
         val company=selectedCompany() ?: return
@@ -3717,7 +3724,17 @@ class MainActivity : Activity() {
             try {
                 val rows=auth.assistantSites(uid,company.id,dailyOnly=true)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || ScheduleDates.today()!=day) return@launch
-                val data=DailyAssistant.briefing(rows,company.id,company.role=="관리자",day)
+                var data=DailyAssistant.briefing(rows,company.id,company.role=="관리자",day)
+                if(force) {
+                    val checked=data.sites.take(3).map { site ->
+                        val status=try {
+                            val response=if(company.role=="관리자") auth.assistantAdminReview(uid,company.id,site.id) else auth.assistantWorkReport(uid,company.id,site.id)
+                            response.optJSONObject("report")?.optString("review_status").orEmpty()
+                        } catch(e:CancellationException) { throw e } catch(_:Exception) { "unknown" }
+                        site.copy(reportStatus=status)
+                    }
+                    data=data.copy(sites=checked+data.sites.drop(3))
+                }
                 val receivableNote=if(company.role=="관리자" && force) {
                     val result=try { auth.assistantReceivableSummary(uid,company.id) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
                     if(result==null) "완료 현장 미수금: 확인하지 못했습니다."
@@ -3725,6 +3742,18 @@ class MainActivity : Activity() {
                 } else ""
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role || ScheduleDates.today()!=day) return@launch
                 dailyState=DailyState(uid,company.id,company.role,day,false,data=data,loadedAt=System.currentTimeMillis(),receivableNote=receivableNote)
+                if(briefingRequested) {
+                    briefingRequested=false
+                    val form=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(12),dp(20),dp(12)) }
+                    DailyAssistant.highlights(data).forEach { form.addView(text(it,15f)) }
+                    form.addView(text("보고서 상태는 앞의 최대 3개 현장을 조회합니다. 나머지는 현장에서 확인해 주세요.",12f))
+                    data.sites.take(3).forEach { site -> addButton(form,site.name+" · 현장 열기",false) {
+                        if(sitePhotoSessionValid(uid,company) && ScheduleDates.today()==day) lookupSites(AssistantRequests.Request("detail"),site.id)
+                    } }
+                    if(receivableNote.isNotBlank()) form.addView(text(receivableNote,13f))
+                    AlertDialog.Builder(this@MainActivity).setTitle("$day 업무 브리핑").setView(ScrollView(this@MainActivity).apply { addView(form) })
+                        .setPositiveButton("확인",null).setNeutralButton("전체 일정") { _,_ -> dailyExpanded=true;openDailyOnReady=true;render() }.show()
+                }
             } catch(e:CancellationException) { throw e }
               catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role)
                   dailyState=DailyState(uid,company.id,company.role,day,false,error=true,loadedAt=System.currentTimeMillis()) }
@@ -4237,7 +4266,10 @@ class MainActivity : Activity() {
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
         if(company!=null && uid!=null) {
             val tasks=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
-            tasks.addView(text("지금 처리할 일",18f,true))
+            tasks.addView(text("오늘 업무 브리핑",18f,true))
+            if(state?.data!=null) DailyAssistant.highlights(state.data).forEach { tasks.addView(text(it,14f)) }
+            else tasks.addView(text(if(state?.error==true) "브리핑을 불러오지 못했습니다. 다시 확인해 주세요." else "오늘 업무를 확인하고 있습니다.",14f))
+            addButton(tasks,"브리핑 새로 확인",false) { lookupBriefing(AssistantRequests.Request("briefing")) }
             if(company.role=="관리자") {
                 addButton(tasks,"연락할 상담 확인",true) { startActivity(Intent(this,BusinessToolsActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("mode","follow-ups").putExtra("filter","due")) }
                 addButton(tasks,"고객 메시지 확인",false) { openCustomerChats() }
@@ -4604,7 +4636,7 @@ class MainActivity : Activity() {
         activeNativeChats?.close();activeNativeChats=null
         val pushUser=account?.userId
         val pushDevice=ChatPushRegistration.deactivate(applicationContext)
-        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
+        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;briefingRequested=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;reviewDecision=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false

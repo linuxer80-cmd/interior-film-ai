@@ -22,6 +22,17 @@ internal object DailyAssistant {
         val count=if(owner) (0 until scoped.length()).count { scoped.optJSONObject(it)?.optString("status")=="consulting" } else null
         return Briefing(sites,count)
     }
+    fun highlights(data:Briefing):List<String> {
+        val result=mutableListOf<String>()
+        result.add(if(data.sites.isEmpty()) "오늘 예정된 현장이 없습니다." else "오늘 현장 ${data.sites.size}곳 · "+data.sites.take(2).joinToString(", ") { it.name }+(if(data.sites.size>2) " 외 ${data.sites.size-2}곳" else ""))
+        val rejected=data.sites.count { it.reportStatus=="rejected" }
+        val pending=data.sites.count { it.reportStatus=="pending" }
+        if(rejected>0) result.add("오늘 현장 중 보고서 보완 필요 ${rejected}건")
+        if(pending>0) result.add("오늘 현장 중 보고서 검수 대기 ${pending}건")
+        if(result.size<3 && data.sites.any { it.reportStatus=="unknown" }) result.add("일부 현장 보고서 상태를 확인하지 못했습니다.")
+        if(result.size<3 && (data.consultations ?: 0)>0) result.add("상담중 현장 ${data.consultations}건 · 후속 연락 확인")
+        return result.take(3)
+    }
     fun wrapUp(siteId:String,report:JSONObject?,support:JSONObject?,stock:JSONObject?):String {
         val lines=mutableListOf<String>()
         if(report==null || !report.has("report") || (!report.isNull("report") && report.optJSONObject("report")==null)) lines.add("완료보고: 확인하지 못했습니다.")
