@@ -13,8 +13,8 @@ internal object NativeWorkflow {
         else -> null
     }
     fun matches(site:JSONObject,query:String):Boolean {
-        val fields=listOf("site_name","customer_name","address","address_detail")
+        val fields=listOf("site_name","customer_name","address","address_detail","customer_phone")
             .joinToString(" ") { site.optString(it).takeUnless { value -> value=="null" }.orEmpty() }
-        return query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.all { fields.contains(it,ignoreCase=true) }
+        return query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.all { fields.contains(it,ignoreCase=true) || (it.filter(Char::isDigit).length>=4 && it.all { c -> c.isDigit() || c in "-+()" } && site.optString("customer_phone").filter(Char::isDigit).contains(it.filter(Char::isDigit))) }
     }
 }

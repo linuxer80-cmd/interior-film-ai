@@ -28,4 +28,11 @@ class NativeWorkflowTest {
         assertFalse(NativeWorkflow.matches(site,"서울"))
         assertFalse(NativeWorkflow.matches(site,"null"))
     }
+    @Test fun phoneSearchNormalizesFormattingAndRequiresFourDigits() {
+        val site=JSONObject().put("site_name","청라").put("customer_phone","010-1234-5678")
+        assertTrue(NativeWorkflow.matches(site,"청라 5678"))
+        assertTrue(NativeWorkflow.matches(site,"01012345678"))
+        assertFalse(NativeWorkflow.matches(site,"서울 5678"))
+        assertFalse(NativeWorkflow.matches(site,"8765"))
+    }
 }

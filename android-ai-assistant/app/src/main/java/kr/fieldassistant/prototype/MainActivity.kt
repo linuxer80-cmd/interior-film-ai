@@ -743,8 +743,8 @@ class MainActivity : Activity() {
         if(company.role!="관리자") { message("현장 등록은 관리자 계정에서 할 수 있습니다.");return }
         val data=item.optJSONObject("chat_draft") ?: return
         fun value(key:String)=data.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미확인"
-        val details="업체: ${company.name}\n현장명: ${value("site_name")}\n고객: ${value("customer_name")}\n전화번호: ${value("customer_phone")}\n주소: ${value("address")}\n시공 내용: ${value("work_description")}\n메모: ${value("memo")}\n\n인식이 다를 수 있습니다. 확인 후 등록을 진행해 주세요."
-        AlertDialog.Builder(this).setTitle("통화 현장 등록 확인").setMessage(details)
+        val details="주소·날짜·금액을 확인해 주세요. 날짜·금액이 미확인이면 확정하지 않습니다.\n\n업체: ${company.name}\n현장명: ${value("site_name")}\n고객: ${value("customer_name")}\n전화번호: ${value("customer_phone")}\n주소: ${value("address")}\n시공 내용: ${value("work_description")}\n시공 날짜: ${data.optJSONArray("work_dates")?.let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } }?.ifBlank { "미확정" } ?: "미확정"}\n계약금액: ${value("contract_amount")}\n선금: ${value("deposit_amount")}\n메모: ${value("memo")}\n\n인식이 다를 수 있습니다. 확인 후 등록을 진행해 주세요."
+        AlertDialog.Builder(this).setTitle("상담 등록 내용 확인").setMessage(details)
             .setNegativeButton("나중에",null).setNeutralButton("내용 수정") { _,_ -> editChatDraft(id) }
             .setPositiveButton("등록 진행") { _,_ -> if(active && chatId==id && selectedCompany()?.id==company.id) answerChat(id,"네") }.show()
     }
@@ -755,7 +755,7 @@ class MainActivity : Activity() {
         val uid=account?.userId ?: return
         val draft=item.optJSONObject("chat_draft") ?: return
         val phone=CallReview.phone(draft.optString("customer_phone"))
-        if(item.optBoolean("manual_site") || company.role!="관리자" || item.optString("chat_company")!=company.id ||
+        if(company.role!="관리자" || item.optString("chat_company")!=company.id ||
             item.optString("site_id").isNotBlank() || item.optJSONObject("registration")!=null || phone.isBlank()) {
             callMatches=null;return
         }
@@ -2260,14 +2260,15 @@ class MainActivity : Activity() {
                 if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company) || !active) return@launch
                 val sites=SiteListOrder.newestFirst((0 until result.length()).mapNotNull { result.optJSONObject(it) })
                 val content=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(12)) }
-                val search=EditText(this@MainActivity).apply { hint="현장명 · 고객명 · 주소 검색";setSingleLine();filters=arrayOf(android.text.InputFilter.LengthFilter(100)) }
+                val search=EditText(this@MainActivity).apply { hint="현장명 · 주소 · 전화번호 끝 4자리";setSingleLine();filters=arrayOf(android.text.InputFilter.LengthFilter(100)) }
                 content.addView(search)
                 val list=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL }
                 content.addView(ScrollView(this@MainActivity).apply { addView(list) },LinearLayout.LayoutParams(-1,dp(320)))
                 val dialog=AlertDialog.Builder(this@MainActivity).setTitle(title ?: "${feature.title} · 현장 선택").setView(content).setNegativeButton("닫기",null).create()
                 fun display(query:String,page:Int=0) {
                     list.removeAllViews()
-                    val matches=sites.filter { NativeWorkflow.matches(it,query) }
+                    val recent=prefs.getString("recent_sites_${uid}_${company.id}","").orEmpty().split(",")
+                    val matches=sites.filter { NativeWorkflow.matches(it,query) }.sortedBy { recent.indexOf(it.optString("id").ifBlank { it.optString("site_id") }).let { index -> if(index<0) Int.MAX_VALUE else index } }
                     list.addView(text("${matches.size}개 현장 · ${page+1}페이지",13f))
                     if(matches.isEmpty()) list.addView(text("선택할 현장이 없습니다. 검색어 또는 배정 상태를 확인해 주세요.",14f))
                     matches.drop(page*20).take(20).forEach { site ->
@@ -2278,6 +2279,7 @@ class MainActivity : Activity() {
                             if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { dialog.dismiss();message("계정과 업체를 다시 확인해 주세요.");return@addButton }
                             if(id.isBlank()) { message("현장 정보를 다시 확인해 주세요.");return@addButton }
                             dialog.dismiss()
+                            prefs.edit().putString("recent_sites_${uid}_${company.id}",(listOf(id)+recent).filter { it.isNotBlank() }.distinct().take(12).joinToString(",")).apply()
                             if(onChosen!=null) onChosen(uid,company,id,name) else if(action=="payment") openSitePayment(uid,company,id,name) else openSiteAction(company.id,id,action)
                         }
                     }
@@ -2376,7 +2378,11 @@ class MainActivity : Activity() {
                   e is ScreenshotRetryNew -> "이전 사진 분석을 다시 시작할 수 있습니다. 같은 사진을 같은 순서로 선택해 주세요."
                   e is IllegalArgumentException && !e.message.isNullOrBlank() -> e.message!!
                   else -> "사진 분석을 완료하지 못했습니다. 사용 횟수와 연결을 확인하고 같은 사진을 같은 순서로 다시 선택해 주세요."
-              }) }
+              })
+                if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) AlertDialog.Builder(this@MainActivity)
+                    .setTitle("선택한 사진 유지됨").setMessage("같은 사진으로 분석을 다시 시도할 수 있습니다. 중복 요청은 기존 요청 번호로 확인합니다.")
+                    .setNegativeButton("나중에",null).setPositiveButton("다시 분석") { _,_ -> if(sitePhotoSessionValid(uid,company)) analyzeSelectedScreenshots(uris,company) }.show()
+              }
             finally { textAnalysisBusy=false;if(epoch==sessionEpoch) render() }
         }
     }
@@ -2746,7 +2752,21 @@ class MainActivity : Activity() {
                 val bitmap=withContext(Dispatchers.IO) { try { decodeSitePhoto(photo.url,company.id,siteId,600) } catch(_:Exception) { null } }
                 if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { bitmap?.recycle();break }
                 if(bitmap!=null) { photo.image.setImageBitmap(bitmap);photo.label.text=photo.title }
-                else { photo.label.text=photo.title+" · 사진 불러오기 실패";photo.image.contentDescription="사진을 불러오지 못했습니다. 목록을 다시 열어 주세요." }
+                else {
+                    photo.label.text=photo.title+" · 눌러서 다시 불러오기"
+                    photo.image.contentDescription="실패한 사진 다시 불러오기"
+                    photo.image.setOnClickListener {
+                        if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@setOnClickListener
+                        photo.image.isEnabled=false
+                        scope.launch {
+                            val retry=withContext(Dispatchers.IO) { try { decodeSitePhoto(photo.url,company.id,siteId,600) } catch(_:Exception) { null } }
+                            if(!dialog.isShowing || epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { retry?.recycle();return@launch }
+                            photo.image.isEnabled=true
+                            if(retry!=null) { photo.image.setImageBitmap(retry);photo.label.text=photo.title;photo.image.setOnClickListener { showLargeSitePhoto(uid,company,siteId,photo.title,photo.url) } }
+                            else photo.label.text=photo.title+" · 다시 시도하려면 누르세요"
+                        }
+                    }
+                }
             }
         }
     }
@@ -2791,7 +2811,16 @@ class MainActivity : Activity() {
                 val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,bytes,mime)
                 if(epoch==sessionEpoch) message(response.optString("message").ifBlank { "사진을 등록했습니다." }+" 완료보고는 아직 제출되지 않았습니다.")
             } catch(e:CancellationException) { throw e }
-              catch(e:Exception) { if(epoch==sessionEpoch) message(if(started) "사진 등록 결과를 확인하지 못했습니다. 다시 올리기 전에 기존 사진을 확인해 주세요.\n"+(e.message ?: "") else e.message ?: "사진을 읽지 못했습니다.") }
+              catch(e:Exception) {
+                if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
+                    val retry=AlertDialog.Builder(this@MainActivity).setTitle(if(started) "사진 등록 결과 확인 필요" else "사진 전송 전 오류")
+                        .setMessage((e.message ?: "연결 상태를 확인해 주세요.")+if(started) "\n중복 등록을 막기 위해 먼저 등록된 사진을 확인해 주세요." else "\n선택한 사진을 유지했습니다. 이 사진만 다시 시도할 수 있습니다.")
+                        .setNegativeButton("나중에",null)
+                    if(started) retry.setPositiveButton("등록된 사진 확인") { _,_ -> openSiteAction(request.company.id,request.siteId,"gallery",request.type) }
+                    else retry.setPositiveButton("이 사진 다시 시도") { _,_ -> uploadReportPhoto(request,uri) }
+                    retry.show()
+                }
+              }
             finally { workerActionBusy=false }
         }
     }
@@ -2876,7 +2905,7 @@ class MainActivity : Activity() {
         val report=result.optJSONObject("report")
         val prefix="report_draft_"+company.id+"_"+siteId+"_"
         if(report!=null && account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) {
-            prefs.edit().remove(prefix+"submission_uncertain").apply()
+            prefs.edit().remove(prefix+"submission_uncertain").putString(prefix+"delivery_state",when(report.optString("review_status")) { "approved" -> "승인 완료";"rejected" -> "반려됨 · 보완 후 다시 제출";else -> "제출됨 · 관리자 검수 대기" }).apply()
         }
         fun value(key:String)=report?.optString(key)?.takeUnless { it.isBlank() || it=="null" }.orEmpty()
         val status=if(report==null) "아직 제출된 완료보고가 없습니다." else when(value("review_status")) {
@@ -2896,6 +2925,7 @@ class MainActivity : Activity() {
         if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) {
             val actions=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),0,dp(16),0) }
             actions.addView(text("작업 내용을 작성하고 사진·인건비를 확인한 뒤 아래에서 제출하세요. 작성 내용은 자동으로 임시 저장됩니다.",13f))
+            val reportInputs=mutableMapOf<String,EditText>()
             for((key,label) in listOf("region" to "시공 부위","summary" to "실제 시공 내용","memo" to "메모")) {
                 actions.addView(text(label,13f,true))
                 val previousKey=when(key) { "region" -> "work_region";"summary" -> "work_summary";else -> "memo" }
@@ -2906,14 +2936,21 @@ class MainActivity : Activity() {
                     override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { if(sitePhotoSessionValid(uid,company)) prefs.edit().putString(prefix+key,s?.toString().orEmpty()).apply() }
                     override fun afterTextChanged(s:android.text.Editable?) {}
                 })
+                reportInputs[key]=edit
                 actions.addView(edit)
             }
+            addButton(actions,"말로 작성",true) {
+                if(!sitePhotoSessionValid(uid,company)) return@addButton
+                reportVoiceRequest=ReportVoiceRequest(uid,company.id,siteId,reportInputs.getValue("summary"),reportInputs.getValue("memo"),company.role)
+                try { startActivityForResult(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"ko-KR"),1007) }
+                catch(_:ActivityNotFoundException) { reportVoiceRequest=null;message("음성 입력 앱을 찾지 못했습니다.") }
+            }
             val progress=text("",13f)
-            fun updateProgress() { progress.text="작업 내용: "+(if(prefs.getString(prefix+"summary","").orEmpty().isBlank()) "미입력" else "작성됨")+" · 인건비: "+(if(prefs.contains(prefix+"labor")) "입력됨" else "확인 필요") }
+            fun updateProgress() { progress.text=(if(prefs.getBoolean(prefix+"submission_uncertain",false)) "전송 결과 확인 필요 · 다시 제출 전 상태 확인" else prefs.getString(prefix+"delivery_state","휴대전화 임시 저장 · 제출 전"))+"\n작업 내용: "+(if(prefs.getString(prefix+"summary","").orEmpty().isBlank()) "미입력" else "작성됨")+" · 인건비: "+(if(prefs.contains(prefix+"labor")) "입력됨" else "확인 필요") }
             updateProgress();actions.addView(progress)
             val draftListener=android.content.SharedPreferences.OnSharedPreferenceChangeListener { _,key -> if(key?.startsWith(prefix)==true) updateProgress() }
             prefs.registerOnSharedPreferenceChangeListener(draftListener)
-            dialog.setOnDismissListener { prefs.unregisterOnSharedPreferenceChangeListener(draftListener) }
+            dialog.setOnDismissListener { prefs.unregisterOnSharedPreferenceChangeListener(draftListener);if(reportVoiceRequest?.input==reportInputs["summary"]) reportVoiceRequest=null }
             val photo=Button(this).apply { text="시공 사진 등록";setOnClickListener {
                 AlertDialog.Builder(this@MainActivity).setTitle("등록할 사진 선택").setItems(arrayOf("시공 전 사진","시공 완료 사진")) { _,index ->
                     pickReportPhoto(ReportPhotoRequest(uid,company,siteId,siteName,if(index==1) "after" else "before"))
@@ -2927,12 +2964,12 @@ class MainActivity : Activity() {
                 actions.addView(Button(this).apply { text="반려 내용 보완 · 재제출";setOnClickListener { prepareRejectedResubmission(uid,company,siteId,siteName) } })
             }
             actions.addView(Button(this).apply { text="인건비 임시 입력";setOnClickListener { prepareNativeLaborDraft(uid,company,siteId) } })
-            actions.addView(Button(this).apply { text="완료보고 제출 준비";setOnClickListener { prepareNativeReportSubmit(uid,company,siteId,siteName) } })
+            actions.addView(Button(this).apply { text="내용 확인하고 제출";setOnClickListener {
+                val summary=reportInputs.getValue("summary")
+                if(summary.text.toString().isBlank()) { summary.error="실제 시공 내용을 입력해 주세요";summary.requestFocus() }
+                else prepareNativeReportSubmit(uid,company,siteId,siteName)
+            } })
             dialog.setView(ScrollView(this).apply { addView(actions) })
-        }
-        if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) dialog.setNegativeButton("말로 보고서 작성") { _,_ ->
-            if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) showReportDraft(uid,company,siteId,report?.takeIf { it.optString("review_status")=="rejected" })
-            else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.setNeutralButton(if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) "기존 보고서 화면 (웹)" else "보고서·사진 보기 (웹)") { _,_ ->
             if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) openSiteAction(company.id,siteId,"report_web")
@@ -3127,9 +3164,10 @@ class MainActivity : Activity() {
                                 val latestNames=(0 until latestWorkers.length()).mapNotNull { latestWorkers.optJSONObject(it) }.associate { it.optString("id") to it.optString("name") }
                                 check(latestMaterials.toString()==materials.toString() && latestReport.optInt("afterCount",-1)==support.optInt("afterCount",-2) && latestExpenses.toString()==expenses.toString() && selected.all { latestNames[it]==names[it] }) { "검토 중 사진·자재·경비 또는 시공자가 변경되었습니다. 다시 확인해 주세요." }
                                 check(prefs.edit().putBoolean(prefix+"submission_uncertain",true).commit()) { "제출 상태를 보관하지 못했습니다." }
+                                prefs.edit().putString(prefix+"delivery_state","전송 중 · 잠시 기다려 주세요").apply()
                                 val saved=auth.submitAssistantWorkerReport(uid,company.id,siteId,region,summary,memo,labor)
                                 if(epoch==sessionEpoch) {
-                                    prefs.edit().remove(prefix+"submission_uncertain").apply()
+                                    prefs.edit().remove(prefix+"submission_uncertain").putString(prefix+"delivery_state","제출 완료 · 관리자 검수 대기").apply()
                                     message(saved.optString("message").ifBlank { "완료보고를 제출했습니다. 관리자 검수를 기다려 주세요." })
                                 }
                             } catch(e:CancellationException) { throw e }
@@ -3187,6 +3225,16 @@ class MainActivity : Activity() {
             val days=input("근무일수",text(prior,"days").ifBlank { "1" },true);form.addView(days)
             val wage=input("일당 (원)",if(prior!=null) text(prior,"daily_wage") else text(person,"daily_wage"),false);form.addView(wage)
             val allowance=input("수당 (원)",text(prior,"allowance").ifBlank { "0" },false);form.addView(allowance)
+            val calculation=text("",13f);form.addView(calculation)
+            fun refreshAmount() {
+                val d=days.text.toString().toBigDecimalOrNull();val w=wage.text.toString().toBigDecimalOrNull();val a=allowance.text.toString().toBigDecimalOrNull()
+                calculation.text=if(d==null || w==null || a==null) "근무일수·일당·수당을 확인해 주세요" else "${name}: ${d.toPlainString()}일 × ${w.toPlainString()}원 + 수당 ${a.toPlainString()}원 = ${d.multiply(w).add(a).toPlainString()}원 (직접 입력 기준)"
+            }
+            listOf(days,wage,allowance).forEach { field -> field.addTextChangedListener(object:android.text.TextWatcher {
+                override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+                override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { refreshAmount() }
+                override fun afterTextChanged(s:android.text.Editable?) {}
+            }) };refreshAmount()
             LaborFields(id,name,selected,days,wage,allowance)
         }
         val dialog=AlertDialog.Builder(this).setTitle("인건비 임시 입력")
@@ -3286,6 +3334,18 @@ class MainActivity : Activity() {
             hint=labels[i];setText(prefs.getString(prefix+key,null) ?: original);filters=arrayOf(android.text.InputFilter.LengthFilter(5000));minLines=if(i==1) 3 else 1
             form.addView(this)
         } }
+        val savedState=text("이 휴대전화에 임시 저장 · 아직 제출 전",13f)
+        form.addView(savedState)
+        inputs.forEachIndexed { i,input -> input.addTextChangedListener(object:android.text.TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) {
+                if(sitePhotoSessionValid(uid,company)) {
+                    prefs.edit().putString(prefix+keys[i],s?.toString().orEmpty()).apply()
+                    savedState.text="임시 저장됨 · 아직 제출 전"
+                }
+            }
+            override fun afterTextChanged(s:android.text.Editable?) {}
+        }) }
         addButton(form,"말로 완료보고 초안 만들기",true) {
             if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!=company.role) { message("계정과 업체를 다시 확인해 주세요.");return@addButton }
             val speech=Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -3296,8 +3356,8 @@ class MainActivity : Activity() {
             try { startActivityForResult(speech,1007) } catch(_:ActivityNotFoundException) { reportVoiceRequest=null;message("음성 입력 앱을 찾지 못했습니다.") }
         }
         val dialog=AlertDialog.Builder(this).setTitle("완료보고 작성")
-            .setMessage((if(previous!=null) "임시 저장한 내용이 없으면 반려된 보고서 내용을 불러옵니다.\n\n" else "")+"입력한 내용은 이 휴대전화에만 저장됩니다. 아직 완료보고가 제출되지 않으며, 사진·자재·경비·인건비는 이 화면에서 등록되지 않습니다.")
-            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장하고 다음",null).setNegativeButton("취소",null)
+            .setMessage((if(previous!=null) "임시 저장한 내용이 없으면 반려된 보고서 내용을 불러옵니다.\n\n" else "")+"작성 내용은 자동으로 이 휴대전화에 임시 저장됩니다. 다음 화면에서 사진과 비용을 확인하고 제출하세요.")
+            .setView(ScrollView(this).apply { addView(form) }).setPositiveButton("저장하고 다음",null).setNegativeButton("임시 보관 후 닫기",null)
             .setNeutralButton("내용 복사",null).create()
         dialog.setOnDismissListener { if(reportVoiceRequest?.input==inputs[1]) reportVoiceRequest=null }
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -3308,7 +3368,7 @@ class MainActivity : Activity() {
         };dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
             val text=keys.indices.map { i -> labels[i]+": "+inputs[i].text.toString().trim() }.joinToString("\n")
             (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("완료보고 임시 내용",text))
-            message("입력 내용을 복사했습니다. 임시 저장은 별도로 눌러 주세요.")
+            message("입력 내용을 복사했습니다. 작성 내용은 자동 임시 저장됩니다.")
         } };dialog.show()
     }
     private fun showNativeAssignments(uid:String,company:CompanyAccess,siteId:String,result:JSONObject) {
@@ -3833,7 +3893,7 @@ class MainActivity : Activity() {
                         return true
                     }
                     fun action(kind:String) { if(validToday()) openSiteAction(company.id,site.id,kind) }
-                    addButton(card,if(company.role=="관리자") "일정 · 배정 확인" else "길 안내",true) { action(if(company.role=="관리자") "schedule" else "navigate") }
+                    addButton(card,if(company.role=="관리자" && site.reportStatus=="pending") "완료보고 검토" else if(company.role=="관리자") "일정 · 배정 확인" else "길 안내",true) { action(if(company.role=="관리자" && site.reportStatus=="pending") "report" else if(company.role=="관리자") "schedule" else "navigate") }
                     actions("현장 상세",{ if(validToday()) lookupSites(AssistantRequests.Request("detail"),site.id) },"길 안내",{ action("navigate") })
                     actions("자재 확인",{ action("materials") },if(company.role=="시공자") "현장 마무리" else "시공자 배정",{ action(if(company.role=="시공자") "wrap_up" else "schedule") })
                     addButton(details,"팀원과 채팅",false) { action("team_chat") }
@@ -3847,16 +3907,21 @@ class MainActivity : Activity() {
                     }
                     siteList.addView(card,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(8),0,0) })
                 }
+                val activeSites=data.sites.filter { it.reportStatus!="approved" }
+                val completedSites=data.sites.filter { it.reportStatus=="approved" }
                 var shown=0
                 lateinit var more:Button
                 fun appendSites() {
-                    val end=(shown+4).coerceAtMost(data.sites.size)
-                    while(shown<end) { addSite(data.sites[shown]);shown++ }
-                    if(shown>=data.sites.size) more.visibility=View.GONE
-                    else more.text="현장 더 보기 ($shown/${data.sites.size})"
+                    val end=(shown+4).coerceAtMost(activeSites.size)
+                    while(shown<end) { addSite(activeSites[shown]);shown++ }
+                    if(shown>=activeSites.size) more.visibility=View.GONE
+                    else more.text="현장 더 보기 ($shown/${activeSites.size})"
                 }
                 more=button("현장 더 보기",false) { appendSites() }
                 appendSites();box.addView(more)
+                if(completedSites.isNotEmpty()) addButton(box,"승인 완료 ${completedSites.size}건 보기",false) {
+                    AlertDialog.Builder(this).setTitle("승인 완료 현장").setItems(completedSites.map { it.name }.toTypedArray()) { _,i -> if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,completedSites[i].id,"report") }.setNegativeButton("닫기",null).show()
+                }
                 box.addView(text("조회 시점 기준 · 변경사항은 새로 확인해 주세요.",12f,false,Color.rgb(89,111,96)))
             }
         }
@@ -4213,6 +4278,8 @@ class MainActivity : Activity() {
             else -> { appendHomeMessage("‘이번 주 현장 알려줘’, ‘다음 주는?’, ‘청라 현장 찾아줘’, ‘1번 현장 상세’처럼 요청해 주세요. 견적·재고·입금 등의 작업은 ‘전체 기능’에서 기존 업무 화면으로 연결할 수 있습니다.");render() }
         }
     }
+    private var homeScrollPosition=0
+    private var homeRenderedMessageCount=0
     private fun renderHomeChat() {
         val candidate=latestConsultation()
         val key=listOf("home",followUpItems().map { it.optString("id")+it.optJSONObject("follow_up").toString() },account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
@@ -4228,7 +4295,9 @@ class MainActivity : Activity() {
         setAssistantContent(page);visibleConversationKey=key
         displayedHomeConsultationId=candidate?.optString("id")
         chatHeader(page)
+        val restoreHomeY=homeScrollPosition
         val scroll=ScrollView(this)
+        scroll.setOnScrollChangeListener { _:View, _:Int, y:Int, _:Int, _:Int -> homeScrollPosition=y }
         val pinnedCompany=selectedCompany();val pinnedUser=account?.userId
         val pinned=dailyState?.takeIf { it.uid==pinnedUser && it.company==pinnedCompany?.id && it.role==pinnedCompany?.role && it.date==ScheduleDates.today() }
         val isOwner=pinnedCompany?.role=="관리자"
@@ -4247,7 +4316,7 @@ class MainActivity : Activity() {
         quick(if(isOwner) "고객 채팅" else "팀 채팅",android.R.drawable.ic_dialog_email) {
             if(isOwner) openCustomerChats() else openTodayTeamChats()
         }
-        quick(if(isOwner) "상담 관리" else "샘플 검색",android.R.drawable.ic_menu_search) { openNativeFeature(if(isOwner) "follow-ups" else "samples") }
+        quick(if(isOwner) "미수금" else "완료보고",android.R.drawable.ic_menu_agenda) { if(isOwner) openReceivableSummary() else chooseWorkflowSite("report") }
         homeQuickActions=quickRow
         page.addView(quickRow)
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(12),dp(8),dp(20)) }
@@ -4399,7 +4468,9 @@ class MainActivity : Activity() {
         page.requestApplyInsets()
         scroll.post {
             if(openDailyOnReady && state!=null && !state.loading) { scroll.fullScroll(View.FOCUS_UP);openDailyOnReady=false }
-            else if(messages.length()>0) scroll.fullScroll(View.FOCUS_DOWN)
+            else if(messages.length()>homeRenderedMessageCount) scroll.fullScroll(View.FOCUS_DOWN)
+            else scroll.scrollTo(0,restoreHomeY)
+            homeRenderedMessageCount=messages.length()
         }
     }
 
@@ -4500,7 +4571,7 @@ class MainActivity : Activity() {
                 preview.loading -> body.addView(text("전화번호로 같은 고객의 현장을 확인하고 있습니다…",14f))
                 preview.failed -> { body.addView(text("기존 현장을 확인하지 못했습니다. 저장할 때 서버에서 다시 확인합니다.",14f));addButton(body,"기존 현장 다시 확인",false) { lookupCallMatches(id) } }
                 preview.sites.isNotEmpty() -> {
-                    body.addView(text("같은 전화번호가 등록된 현장 ${preview.sites.size}개 (최대 50개 표시) · 해당 현장을 선택한 뒤 등록해 주세요. 번호와 현장이 맞는지 직접 확인해야 합니다.",14f,true))
+                    body.addView(text("기존 현장에 추가 · 같은 번호의 현장 ${preview.sites.size}개\n해당 현장을 선택해 주세요. 새 현장은 등록 확인 단계에서 선택할 수 있습니다.",14f,true))
                     preview.sites.forEach { candidate ->
                         val candidateId=candidate.optString("id")
                         addButton(body,(if(item.optString("preview_target_id")==candidateId) "✓ " else "")+candidateLabel(candidate),false) {
@@ -4540,7 +4611,7 @@ class MainActivity : Activity() {
             if(!done && !paused) {
             addButton(body,"등록 안 함",false) { answerChat(id,"등록 안 함") }
             val quick=LinearLayout(this)
-            quick.addView(button("네 · 등록",true) { answerChat(id,"네") },LinearLayout.LayoutParams(0,dp(48),1f))
+            quick.addView(button(if(item.optString("preview_target_id").isNotBlank()) "기존 현장에 추가" else "내용 확인 후 등록",true) { if(reg!=null) answerChat(id,"네") else confirmCallNotificationRegistration(id) },LinearLayout.LayoutParams(0,dp(48),1f))
             quick.addView(button("나중에",false) { answerChat(id,"나중에") },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(dp(8),0,0,0) });page.addView(quick,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(8),0,dp(8)) })
             }
             val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),0,dp(6),0);background=bg(Color.rgb(244,244,244),26) }
@@ -4617,7 +4688,7 @@ class MainActivity : Activity() {
         activeNativeChats?.close();activeNativeChats=null
         val pushUser=account?.userId
         val pushDevice=ChatPushRegistration.deactivate(applicationContext)
-        chatId=null;chatInput="";settingsOpen=false;homeInput="";lookupBusy=false;briefingRequested=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
+        chatId=null;chatInput="";settingsOpen=false;homeInput="";homeScrollPosition=0;homeRenderedMessageCount=0;lookupBusy=false;briefingRequested=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;reviewDecision=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
@@ -4715,8 +4786,12 @@ class MainActivity : Activity() {
             val permissionPrefs=getSharedPreferences("assistant_permission_state",MODE_PRIVATE)
             val askedBefore=permissionPrefs.getBoolean("notifications_requested",false)
             if(NotificationPolicy.shouldRequestPermission(false,askedBefore,shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))) {
-                permissionPrefs.edit().putBoolean("notifications_requested",true).apply()
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),1002)
+                AlertDialog.Builder(this).setTitle("필요한 업무 알림 받기")
+                    .setMessage("새 상담·채팅·현장 일정과 보고서 알림을 받습니다. 허용하지 않아도 앱을 사용할 수 있습니다.")
+                    .setNegativeButton("나중에",null).setPositiveButton("알림 허용") { _,_ ->
+                        permissionPrefs.edit().putBoolean("notifications_requested",true).apply()
+                        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),1002)
+                    }.show()
                 return
             }
         }
@@ -4777,7 +4852,7 @@ class MainActivity : Activity() {
     private fun startSimpleSetup() {
         if(setupBusy || baselineBusy) { message("준비 중입니다. 잠시 기다려 주세요.");return }
         AlertDialog.Builder(this).setTitle("비서 간편 설정")
-            .setMessage("통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 앱에 포함되어 있으며 첫 녹음 확인 시 준비합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
+            .setMessage("통화 자동 분석을 사용할 때만 설정하면 됩니다. 직접 현장 등록·완료보고는 이 설정 없이 이용할 수 있습니다.\n\n통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 앱에 포함되어 있으며 첫 녹음 확인 시 준비합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
             .setNegativeButton("나중에",null).setPositiveButton("시작") { _,_ ->
                 simpleSetup=true
                 if(folder()==null) openFolderPicker() else continueSimpleSetup()
