@@ -3799,12 +3799,12 @@ class MainActivity : Activity() {
         val isOwner=pinnedCompany?.role=="관리자"
         val quickRow=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         fun quick(label:String,icon:Int,action:()->Unit) {
-            val item=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;isClickable=true;isFocusable=true;contentDescription=label }
+            val item=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;isClickable=true;isFocusable=true;contentDescription=label;setPadding(dp(4),dp(10),dp(4),dp(10));background=bg(Color.WHITE,16,Color.rgb(230,232,222)) }
             val image=ImageView(this).apply { setImageResource(icon);setColorFilter(Color.rgb(35,84,59));contentDescription=null;importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO }
             item.addView(image,LinearLayout.LayoutParams(dp(22),dp(22)))
-            item.addView(text(label,12f,true,Color.rgb(35,65,48)).apply { gravity=Gravity.CENTER;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END })
+            item.addView(text(label,12f,true,Color.rgb(35,65,48)).apply { gravity=Gravity.CENTER;setPadding(0,dp(6),0,0) })
             item.setOnClickListener { action() }
-            quickRow.addView(item,LinearLayout.LayoutParams(0,dp(62),1f))
+            quickRow.addView(item,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(10),dp(3),dp(4)) });item.minimumHeight=dp(76)
         }
         quick(if(isOwner) "현장 등록" else "현장 찾기",android.R.drawable.ic_menu_add) {
             if(isOwner) openNativeFeature("new-site") else lookupSites(AssistantRequests.Request("sites"))
@@ -3974,31 +3974,59 @@ class MainActivity : Activity() {
             item.optJSONObject("chat_draft"),item.optJSONObject("registration"),item.optString("transcript"),
             item.optString("site_id"),item.optString("preview_target_id"),callMatches,consultationDisposition(item),id in savingRegistrations).toString()
         if(visibleConversationKey==key) return
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.WHITE) }
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(12));setBackgroundColor(Color.rgb(249,247,242)) }
         setAssistantContent(page)
         visibleConversationKey=key
         chatHeader(page)
         val scroll=ScrollView(this)
-        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(4),dp(8),dp(4),dp(20)) }
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val messages=item.optJSONArray("chat_messages") ?: JSONArray()
         for(i in 0 until messages.length()) {
             val m=messages.optJSONObject(i) ?: continue
             val mine=m.optBoolean("user")
-            val bubble=text(m.optString("body"),15f).apply { setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(if(mine) Color.rgb(241,242,242) else Color.WHITE,16) }
+            val bubble=text(m.optString("body"),16f,false,if(mine) Color.WHITE else Color.rgb(43,62,51)).apply { setPadding(dp(16),dp(14),dp(16),dp(14));background=bg(if(mine) Color.rgb(35,84,59) else Color.WHITE,18);setTextIsSelectable(true) }
             val lp=LinearLayout.LayoutParams(-1,-2).apply { setMargins(if(mine) dp(40) else 0,dp(10),if(mine) 0 else dp(28),0) };body.addView(bubble,lp)
         }
         val reg=item.optJSONObject("registration")
         val data=reg?.optJSONObject("data") ?: item.optJSONObject("chat_draft")
-        if(data!=null) addButton(body,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목과 메모의 통화 발췌는 확인 후 저장합니다. 녹음 파일과 통화 원문 전체는 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
-        if(!item.optBoolean("manual_site")) addButton(body,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
+        if(data!=null) {
+            val summary=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(16),dp(18),dp(16));background=bg(Color.WHITE,20,Color.rgb(225,229,220)) }
+            val status=when {
+                item.optString("site_id").isNotBlank() -> "등록 완료"
+                id in savingRegistrations -> "저장 확인 중"
+                consultationDisposition(item)!="active" -> "검토 종료"
+                else -> "등록 전 확인"
+            }
+            summary.addView(text(status,12f,true,Color.rgb(49,92,72)))
+            summary.addView(text(data.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "현장명을 확인해 주세요",20f,true).apply { setPadding(0,dp(6),0,dp(12)) })
+            listOf("고객" to "customer_name","연락처" to "customer_phone","주소" to "address","시공 내용" to "work_description").forEach { (label,field) ->
+                val value=data.optString(field).takeUnless { it.isBlank() || it=="null" } ?: "미확인"
+                summary.addView(text(label,12f,false,Color.rgb(108,119,111)).apply { setPadding(0,dp(8),0,dp(2)) })
+                summary.addView(text(value,15f).apply { setTextIsSelectable(true) })
+            }
+            body.addView(summary,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(16),0,dp(4)) })
+        }
+        val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;visibility=View.GONE }
+        val detailsToggle=button("통화 원문 · 상세 확인 펼치기",false) { }
+        detailsToggle.setOnClickListener {
+            val expanded=details.visibility!=View.VISIBLE
+            details.visibility=if(expanded) View.VISIBLE else View.GONE
+            detailsToggle.text=if(expanded) "통화 원문 · 상세 확인 접기" else "통화 원문 · 상세 확인 펼치기"
+            detailsToggle.contentDescription=detailsToggle.text
+        }
+        body.addView(detailsToggle,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,0) })
+        detailsToggle.minimumHeight=dp(48)
+        body.addView(details)
+        if(data!=null) addButton(details,"등록 내용 확인",false) { AlertDialog.Builder(this).setTitle("등록할 내용").setMessage("등록할 내용\n현장명: ${data.optString("site_name")}\n고객명: ${data.optString("customer_name").ifBlank { "미확인" }}\n전화번호: ${data.optString("customer_phone").ifBlank { "미확인" }}\n주소: ${data.optString("address").ifBlank { "미확인" }}\n시공: ${data.optString("work_description").ifBlank { "미확인" }}\n메모: ${data.optString("memo")}\n\n위 항목과 메모의 통화 발췌는 확인 후 저장합니다. 녹음 파일과 통화 원문 전체는 자동 전송하지 않습니다. 주소나 전화번호가 없으면 같은 현장을 찾지 못할 수 있습니다.").setPositiveButton("닫기",null).show() }
+        if(!item.optBoolean("manual_site")) addButton(details,"인식한 통화 원문 보기",false) { AlertDialog.Builder(this).setTitle("인식한 통화 원문").setMessage(item.optString("transcript")).setPositiveButton("닫기",null).show() }
         if(data!=null && !item.optBoolean("manual_site")) {
-            addButton(body,"주소 · 일정 · 필름 · 금액 확인",false) { AlertDialog.Builder(this).setTitle("통화에서 확인할 항목").setMessage(callEvidenceText(item,data)).setPositiveButton("닫기",null).show() }
-            if(reg==null && item.optString("site_id").isBlank()) addButton(body,"인식한 통화 내용 수정",false) { editCallTranscript(id) }
+            addButton(details,"주소 · 일정 · 필름 · 금액 확인",false) { AlertDialog.Builder(this).setTitle("통화에서 확인할 항목").setMessage(callEvidenceText(item,data)).setPositiveButton("닫기",null).show() }
+            if(reg==null && item.optString("site_id").isBlank()) addButton(details,"인식한 통화 내용 수정",false) { editCallTranscript(id) }
         }
 
         if(!item.optBoolean("manual_site") && id.startsWith("content:") && selectedCompany()?.role=="관리자")
-            addButton(body,"서버 AI로 다시 분석",false) { selectedCompany()?.takeIf { it.role=="관리자" }?.let { confirmCloudRecording(Uri.parse(id),it) } }
+            addButton(details,"서버 AI로 다시 분석",false) { selectedCompany()?.takeIf { it.role=="관리자" }?.let { confirmCloudRecording(Uri.parse(id),it) } }
         val done=item.optString("site_id").isNotBlank()
         val busy=id in savingRegistrations
         val paused=consultationDisposition(item)!="active"
@@ -4057,7 +4085,7 @@ class MainActivity : Activity() {
             addButton(body,"등록 안 함",false) { answerChat(id,"등록 안 함") }
             val quick=LinearLayout(this)
             quick.addView(button("네 · 등록",true) { answerChat(id,"네") },LinearLayout.LayoutParams(0,dp(48),1f))
-            quick.addView(button("나중에",false) { answerChat(id,"나중에") },LinearLayout.LayoutParams(0,dp(48),1f));page.addView(quick)
+            quick.addView(button("나중에",false) { answerChat(id,"나중에") },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(dp(8),0,0,0) });page.addView(quick,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(8),0,dp(8)) })
             }
             val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(10),0,dp(6),0);background=bg(Color.rgb(244,244,244),26) }
             val input=EditText(this).apply { hint="메시지 보내기";textSize=16f;setSingleLine(true);setText(chatInput);background=null;addTextChangedListener(object: android.text.TextWatcher {
