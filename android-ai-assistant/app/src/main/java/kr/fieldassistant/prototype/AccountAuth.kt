@@ -923,6 +923,29 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun attendance(expectedUser:String,companyId:String,month:String,body:JSONObject?=null):JSONObject {
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
+        require(Regex("20[0-9]{2}-(0[1-9]|1[0-2])").matches(month))
+        if(body!=null) {
+            require(body.optString("action") in listOf("in","out") && body.optBoolean("consent"))
+            val latest=attendance(expectedUser,companyId,ScheduleDates.today().take(7))
+            check(AttendanceModel.allowed(latest,companyId,body)) { "배정 또는 출퇴근 상태가 바뀌었습니다. 목록을 다시 확인해 주세요." }
+        }
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/attendance?mode=worker&month="+month)
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=90000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(body!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) } }
+                val status=c.responseCode;val stream=if(status in 200..299)c.inputStream else c.errorStream
+                val result=JSONObject(stream?.use { SecureTransport.readBounded(it,8*1024*1024) }?.toString(Charsets.UTF_8).orEmpty())
+                check(status in 200..299 && (body==null || result.optBoolean("success"))) { result.optString("error").ifBlank { "출퇴근 정보를 확인하지 못했습니다." } }
+                if(body==null) { check(result.optJSONArray("records")!=null && result.optJSONArray("sites")!=null);AttendanceModel.scoped(result,companyId) } else result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantWorkReport(expectedUser:String,companyId:String,siteId:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }

@@ -1191,6 +1191,11 @@ class MainActivity : Activity() {
     private fun openNativeFeature(featureId:String):Boolean {
         when(featureId) {
             "new-site" -> showNewSiteRegistration()
+            "attendance" -> {
+                val uid=account?.userId ?: return true
+                val company=selectedCompany() ?: return true
+                startActivity(Intent(this,AttendanceActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("company_name",company.name))
+            }
             "quotes","report","assignment","expenses","film-use","payment" -> chooseWorkflowSite(featureId)
             "all" -> showFeatures()
             "customer-page" -> customerPageManager()

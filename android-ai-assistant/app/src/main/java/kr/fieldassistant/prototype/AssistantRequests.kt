@@ -35,7 +35,7 @@ internal object AssistantRequests {
         Feature("jobs","구인 · 구직","/jobs"),
         Feature("all","필름장이 전체 기능","/")
     )
-    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables","quotes","assignment","payment","report","expenses","film-use","all")
+    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables","quotes","assignment","payment","report","expenses","film-use","all","attendance")
     fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
         val q=NaturalLanguage.normalize(input);val compact=q.replace(Regex("\\s+"),"")
