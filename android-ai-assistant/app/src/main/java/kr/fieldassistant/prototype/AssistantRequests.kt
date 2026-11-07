@@ -11,7 +11,13 @@ internal object AssistantRequests {
     val features=listOf(
         Feature("new-site","새 현장 등록 · AI 상담 분석","/admin?tab=sites&assistantRegister=1",true),
         Feature("sites","현장 관리 · 일정 · 배정","/admin?tab=sites",true),
-        Feature("quotes","견적서 작성","/admin/quotes",true),
+        Feature("quotes","현장 견적서 작성","/admin/quotes",true),
+        Feature("quote-documents","전체 견적서 · 현장 없이 작성 · PDF","/admin/quotes",true),
+        Feature("assignment","현장 일정 · 시공자 배정","/admin?tab=sites",true),
+        Feature("payment","현장 입금 등록","/admin/receivables",true),
+        Feature("report","완료보고 · 확인","/worker"),
+        Feature("expenses","현장 경비 입력","/worker"),
+        Feature("film-use","필름 사용량 · 남은 필름 반납","/worker"),
         Feature("inventory","필름 재고 · 입고 · 반출 · 반입","/admin/inventory",true),
         Feature("receivables","미수금 확인 · 입금 관리","/admin/receivables",true),
         Feature("profit","매출 · 수익","/admin?tab=profit",true),
@@ -29,7 +35,7 @@ internal object AssistantRequests {
         Feature("jobs","구인 · 구직","/jobs"),
         Feature("all","필름장이 전체 기능","/")
     )
-    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables")
+    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables","quotes","assignment","payment","report","expenses","film-use","all")
     fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
         val q=NaturalLanguage.normalize(input);val compact=q.replace(Regex("\\s+"),"")
