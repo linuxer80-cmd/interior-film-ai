@@ -1032,7 +1032,7 @@ class MainActivity : Activity() {
         val menu=TextView(this).apply { text="☰";textSize=24f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
         bar.addView(text("현장 AI 비서",19f,true,Color.WHITE),LinearLayout.LayoutParams(0,-2,1f))
-        val web=TextView(this).apply { text="웹앱";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="필름장이 웹앱 열기";setOnClickListener { confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/") } } }
+        val web=TextView(this).apply { text="업무";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="앱 안에서 업무 처리";setOnClickListener { showFeatures() } }
         val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
         inboxBadge=inbox
         bar.addView(inbox,LinearLayout.LayoutParams(dp(58),dp(52)))
@@ -1043,7 +1043,7 @@ class MainActivity : Activity() {
     }
     private fun showAssistantMenu() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
-            .setItems((listOf("대화 목록","오늘 시공 일정","설정","필름장이 열기","전체 기능") + (if(selectedCompany()?.role=="관리자") listOf("매출 · 수익","고객 채팅") else emptyList()) + listOf("오늘 현장 팀 채팅") + (if(selectedCompany()?.role=="관리자") listOf("상담 비서에게 요청") else emptyList())).toTypedArray()) { _,which ->
+            .setItems((listOf("대화 목록","오늘 시공 일정","설정","앱 내 통합 화면","전체 기능") + (if(selectedCompany()?.role=="관리자") listOf("매출 · 수익","고객 채팅") else emptyList()) + listOf("오늘 현장 팀 채팅") + (if(selectedCompany()?.role=="관리자") listOf("상담 비서에게 요청") else emptyList())).toTypedArray()) { _,which ->
                 when(which) {
                     0 -> showConversationList()
                     1 -> { chatId=null;settingsOpen=false;answerHome("오늘 일정") }
@@ -1191,6 +1191,8 @@ class MainActivity : Activity() {
     private fun openNativeFeature(featureId:String):Boolean {
         when(featureId) {
             "new-site" -> showNewSiteRegistration()
+            "quotes","report","assignment","expenses","film-use","payment" -> chooseWorkflowSite(featureId)
+            "all" -> showFeatures()
             "customer-page" -> customerPageManager()
             "customer-chat" -> openCustomerChats()
             "clients" -> tradeManager()
@@ -1242,8 +1244,8 @@ class MainActivity : Activity() {
                 if(paymentPending()!=null) addButton(content,"이전 입금 저장 결과 확인",false) { dialog.dismiss();showPendingPayment(uid,company) }
                 addButton(content,"현장별 미수금 보기",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();openReceivableSites(uid,company) } }
                 addButton(content,"거래처별 연결 현장 보기",false) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();tradeManager() } }
-                addButton(content,"입금 등록 · 상세 관리 (웹앱)",false) {
-                    if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/admin/receivables") } }
+                addButton(content,"입금 등록",false) {
+                    if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();chooseWorkflowSite("payment") }
                 }
                 dialog.show()
             } catch(e:CancellationException) { throw e }
@@ -1547,7 +1549,7 @@ class MainActivity : Activity() {
         val owner=selectedCompany()?.role=="관리자"
         val feature=AssistantRequests.feature(featureId,owner)
         if(feature==null) { appendHomeMessage("이 기능은 관리자 권한이 필요합니다.");render();return }
-        appendHomeMessage(if(AssistantRequests.opensWeb(feature.id)) "${feature.title} 기능은 웹 화면에서 열립니다." else "${feature.title} 기능을 열 수 있습니다.")
+        appendHomeMessage(if(AssistantRequests.opensWeb(feature.id)) "${feature.title} 기능은 앱 내 통합 화면에서 사용할 수 있습니다." else "${feature.title} 기능을 열 수 있습니다.")
         val messages=JSONArray(prefs.getString("home_chat","[]"))
         messages.getJSONObject(messages.length()-1).put("feature",feature.id)
         prefs.edit().putString("home_chat",messages.toString()).apply();render()
@@ -2110,11 +2112,73 @@ class MainActivity : Activity() {
         }
     }
     private fun showFeatures() {
-        val owner=selectedCompany()?.role=="관리자"
-        val features=AssistantRequests.features.filter { owner || !it.ownerOnly }
-        AlertDialog.Builder(this).setTitle("필름장이 기능").setItems(features.map { it.title + if(AssistantRequests.opensWeb(it.id)) " (웹앱)" else "" }.toTypedArray()) { _,i ->
-            chatId=null;settingsOpen=false;offerFeature(features[i].id)
-        }.setNegativeButton("닫기",null).show()
+        val uid=account?.userId ?: return
+        val company=selectedCompany() ?: return
+        val owner=company.role=="관리자"
+        val features=AssistantRequests.features.filter { it.id!="all" && (owner || !it.ownerOnly) }
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(12)) }
+        val dialog=AlertDialog.Builder(this).setTitle("${company.name} · 업무")
+            .setView(ScrollView(this).apply { addView(content) }).setNegativeButton("닫기",null).create()
+        fun group(title:String,items:List<AssistantRequests.Feature>) {
+            content.addView(text(title,15f,true).apply { setPadding(0,dp(14),0,dp(6)) })
+            items.forEach { feature -> addButton(content,feature.title,false) {
+                if(!sitePhotoSessionValid(uid,company)) { dialog.dismiss();message("계정과 업체를 다시 확인해 주세요.");return@addButton }
+                dialog.dismiss();chatId=null;settingsOpen=false;openFeature(feature)
+            } }
+        }
+        group("앱에서 바로 처리",features.filter { !AssistantRequests.opensWeb(it.id) })
+        group("앱 내 통합 화면",features.filter { AssistantRequests.opensWeb(it.id) })
+        content.addView(text("통합 화면은 처음 한 번 같은 계정으로 로그인해 주세요. 외부 브라우저로 이동하지 않고 앱 안에서 사용합니다.",13f))
+        dialog.show()
+    }
+    private var workflowSitesBusy=false
+    private fun chooseWorkflowSite(featureId:String) {
+        val uid=account?.userId ?: return
+        val company=selectedCompany() ?: return
+        val feature=AssistantRequests.feature(featureId,company.role=="관리자") ?: return
+        val action=NativeWorkflow.action(featureId) ?: return
+        if(workflowSitesBusy) { message("현장 목록을 확인하고 있습니다.");return }
+        workflowSitesBusy=true;val epoch=sessionEpoch
+        scope.launch {
+            try {
+                val result=auth.assistantSites(uid,company.id)
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company) || !active) return@launch
+                val sites=SiteListOrder.newestFirst((0 until result.length()).mapNotNull { result.optJSONObject(it) })
+                val content=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(12)) }
+                val search=EditText(this@MainActivity).apply { hint="현장명 · 고객명 · 주소 검색";setSingleLine();filters=arrayOf(android.text.InputFilter.LengthFilter(100)) }
+                content.addView(search)
+                val list=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL }
+                content.addView(ScrollView(this@MainActivity).apply { addView(list) },LinearLayout.LayoutParams(-1,dp(320)))
+                val dialog=AlertDialog.Builder(this@MainActivity).setTitle("${feature.title} · 현장 선택").setView(content).setNegativeButton("닫기",null).create()
+                fun display(query:String,page:Int=0) {
+                    list.removeAllViews()
+                    val matches=sites.filter { NativeWorkflow.matches(it,query) }
+                    list.addView(text("${matches.size}개 현장 · ${page+1}페이지",13f))
+                    if(matches.isEmpty()) list.addView(text("선택할 현장이 없습니다. 검색어 또는 배정 상태를 확인해 주세요.",14f))
+                    matches.drop(page*20).take(20).forEach { site ->
+                        val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "이름 없는 현장"
+                        val id=site.optString("id").ifBlank { site.optString("site_id") }
+                        val address=site.optString("address").takeUnless { it=="null" }.orEmpty()
+                        addButton(list,"$name · ${siteStatus(site.optString("status"))}\n$address",false) {
+                            if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) { dialog.dismiss();message("계정과 업체를 다시 확인해 주세요.");return@addButton }
+                            if(id.isBlank()) { message("현장 정보를 다시 확인해 주세요.");return@addButton }
+                            dialog.dismiss()
+                            if(action=="payment") openSitePayment(uid,company,id,name) else openSiteAction(company.id,id,action)
+                        }
+                    }
+                    if(page>0) addButton(list,"이전",false) { display(query,page-1) }
+                    if((page+1)*20<matches.size) addButton(list,"다음",false) { display(query,page+1) }
+                }
+                search.addTextChangedListener(object:android.text.TextWatcher {
+                    override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+                    override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { display(s?.toString().orEmpty()) }
+                    override fun afterTextChanged(s:android.text.Editable?) {}
+                })
+                display("");dialog.show()
+            } catch(e:CancellationException) { throw e }
+              catch(_:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message("현장 목록을 불러오지 못했습니다. 연결 상태와 업체 권한을 확인해 주세요.") }
+            finally { workflowSitesBusy=false }
+        }
     }
     private var workerActionBusy=false
     private fun openWebWorkspace(url:String) {
@@ -3839,7 +3903,11 @@ class MainActivity : Activity() {
                     appendHomeMessage("요청하신 ‘${named}’ 현장을 찾겠습니다. 목록에서 현장을 선택해 주세요.")
                     lookupSites(AssistantRequests.Request("sites",query=named));return
                 }
-                if(id.isBlank()) { appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 자재, 경비, 완료보고 또는 현장 마무리를 요청할 수 있습니다.");render();return }
+                if(id.isBlank()) {
+                    val workflow=when(request.feature) { "report"->"report";"expenses"->"expenses";"film"->"film-use";else->null }
+                    if(workflow!=null) { render();chooseWorkflowSite(workflow);return }
+                    appendHomeMessage("먼저 현장을 조회하고 상세를 열어 주세요. 그다음 자재, 경비, 완료보고 또는 현장 마무리를 요청할 수 있습니다.");render();return
+                }
                 val actionMessage=when(request.feature) {
                     "phone" -> "${currentName} 현장의 전화 연결을 준비합니다."
                     "navigate" -> "${currentName} 현장의 길 안내를 준비합니다."
@@ -4008,7 +4076,7 @@ class MainActivity : Activity() {
                 addButton(body,"반출·반납 확인하고 저장",false) { openSiteAction(m.optString("film_company"),m.optString("film_site"),"film") }
             }
             AssistantRequests.feature(m.optString("feature"),selectedCompany()?.role=="관리자")?.let { feature ->
-                addButton(body,feature.title+if(AssistantRequests.opensWeb(feature.id)) " · 웹앱에서 열기" else " 열기",false) { openFeature(feature) }
+                addButton(body,feature.title+if(AssistantRequests.opensWeb(feature.id)) " · 앱 내 통합 화면" else " 열기",false) { openFeature(feature) }
             }
         }
         candidate?.let { item ->
