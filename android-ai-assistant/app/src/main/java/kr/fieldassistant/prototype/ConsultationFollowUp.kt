@@ -9,7 +9,7 @@ internal object ConsultationFollowUp {
     fun stage(item:JSONObject)=item.optJSONObject("follow_up")?.optString("stage")?.takeIf { it in stages } ?: "draft"
     fun action(item:JSONObject)=item.optJSONObject("follow_up")?.optString("action")?.takeIf { it in actions } ?: "estimate"
     fun date(item:JSONObject)=item.optJSONObject("follow_up")?.optString("date").orEmpty().takeIf { validDate(it) }.orEmpty()
-    private fun validDate(value:String)=Regex("\\d{4}-\\d{2}-\\d{2}").matches(value) && runCatching { LocalDate.parse(value) }.isSuccess
+    fun validDate(value:String)=Regex("\\d{4}-\\d{2}-\\d{2}").matches(value) && runCatching { LocalDate.parse(value) }.isSuccess
     fun normalizedDate(value:String):String {
         if(value.isBlank()) return ""
         val dates=ConsultationInput.dates(value)

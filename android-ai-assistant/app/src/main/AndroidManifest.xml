@@ -20,6 +20,9 @@
                 <data android:scheme="filmjang-assistant" android:host="auth" android:path="/kakao" />
             </intent-filter>
         </activity>
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.quote-files" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/quote_files" /></provider>
+        <activity android:name=".QuoteExportActivity" android:exported="false" />
+        <activity android:name=".BusinessToolsActivity" android:exported="false" />
         <activity android:name=".AttendanceActivity" android:exported="false" />
         <activity android:name=".WebWorkspaceActivity" android:exported="false" />
         <receiver android:name=".CallNotificationDeclineReceiver" android:exported="false" />

@@ -1014,6 +1014,28 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun businessTools(expectedUser:String,companyId:String,path:String,body:JSONObject?=null):JSONObject {
+        require(path.startsWith("/api/admin/consultation-follow-ups?") || path.startsWith("/api/admin/worker-overview?") || path.startsWith("/api/worker-directory?") || path=="/api/worker-directory")
+        val verified=verify()
+        check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 계정과 업체를 확인해 주세요." }
+        check(appContext.getSharedPreferences("assistant_user_$expectedUser",android.content.Context.MODE_PRIVATE).getString("selected_company",null)==companyId) { "선택한 업체가 변경되었습니다." }
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app"+path)
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=30000
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
+                if(body!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json");c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) } }
+                val code=c.responseCode
+                val bytes=(if(code in 200..299)c.inputStream else c.errorStream)?.use { input -> val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(true){val n=input.read(buffer);if(n<0)break;check(out.size()+n<=8*1024*1024){"응답이 너무 큽니다."};out.write(buffer,0,n)};out.toByteArray() } ?: byteArrayOf()
+                check(bytes.size<=8*1024*1024) { "응답이 너무 큽니다." }
+                val result=try { JSONObject(String(bytes,Charsets.UTF_8)) } catch(_:Exception) { JSONObject() }
+                check(code in 200..299) { result.optString("error").ifBlank { "처리하지 못했습니다. 새로 확인해 주세요." } }
+                if(path.startsWith("/api/admin/")) check(result.optString("companyId")==companyId) { "업체 정보를 확인하지 못했습니다." }
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun assistantQuote(expectedUser:String,companyId:String,siteId:String,document:JSONObject?=null,revision:Int=0):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
