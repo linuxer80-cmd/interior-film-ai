@@ -456,6 +456,29 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
+    suspend fun analyzeDealerReceipt(expectedUser:String,companyId:String,image:ByteArray):JSONObject {
+        dealerInventory(expectedUser,companyId) // Verify selected active owner before sending the image.
+        require(image.isNotEmpty() && image.size<=600000)
+        val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
+        return withContext(Dispatchers.IO) {
+            val boundary="Receipt"+java.util.UUID.randomUUID().toString().replace("-","")
+            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/dealer-receipts")
+            try {
+                c.instanceFollowRedirects=false;c.requestMethod="POST";c.connectTimeout=15000;c.readTimeout=75000;c.doOutput=true
+                c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary=$boundary")
+                c.outputStream.use { out ->
+                    out.write(("--$boundary\r\nContent-Disposition: form-data; name=\"images\"; filename=\"receipt.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").toByteArray())
+                    out.write(image);out.write(("\r\n--$boundary--\r\n").toByteArray())
+                }
+                val status=c.responseCode
+                val stream=if(status in 200..299)c.inputStream else c.errorStream
+                val result=JSONObject(stream?.use { SecureTransport.readBounded(it,1024*1024) }?.toString(Charsets.UTF_8).orEmpty())
+                check(status in 200..299) { result.optString("error").ifBlank { "영수증을 분석하지 못했습니다." } }
+                check(result.optJSONArray("rows")!=null && result.getJSONArray("rows").length()<=100)
+                result
+            } finally { c.disconnect() }
+        }
+    }
     suspend fun analyzeSiteScreenshot(expectedUser:String,companyId:String,images:List<ByteArray>,requestId:String):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
@@ -633,7 +656,7 @@ internal class AccountAuth private constructor(context: Context) {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
         if(body!=null) {
-            require(body.optString("action") in listOf("client","contact"))
+            require(body.optString("action") in listOf("client","contact","pay"))
             require(Regex("^[0-9a-fA-F-]{36}$").matches(body.optString("requestId")))
         }
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")

@@ -9,7 +9,7 @@ import java.nio.ByteBuffer
 
 /** Bounded decode applies camera orientation and strips metadata when encoding JPEG. */
 internal object ChatPhotoEncoder {
-    fun encode(context:Context,uri:Uri):ByteArray {
+    fun encode(context:Context,uri:Uri,maxBytes:Int=2*1024*1024):ByteArray {
         val input=context.contentResolver.openInputStream(uri)?.use { SecureTransport.readBounded(it,32*1024*1024) }
             ?: error("사진을 열지 못했습니다.")
         val bitmap=ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(input))) { decoder,info,_ ->
@@ -23,7 +23,7 @@ internal object ChatPhotoEncoder {
             for(quality in listOf(85,75,60,45)) {
                 val output=ByteArrayOutputStream()
                 check(bitmap.compress(Bitmap.CompressFormat.JPEG,quality,output))
-                if(output.size()<=2*1024*1024) return output.toByteArray()
+                if(output.size()<=maxBytes) return output.toByteArray()
             }
             error("사진 용량을 줄이지 못했습니다.")
         } finally { bitmap.recycle() }

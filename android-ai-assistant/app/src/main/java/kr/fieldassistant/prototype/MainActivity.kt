@@ -1686,14 +1686,15 @@ class MainActivity : Activity() {
                 val data=auth.dealerInventory(uid,company.id)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" || !active) return@launch
                 val pending=prefs.getString("dealer_receive_pending_"+company.id,null)
-                val options=mutableListOf("현재 재고 확인","거래처 자재 입고")
+                val options=mutableListOf("현재 재고 확인","거래처 자재 입고","영수증 사진 분석 · 입고")
                 if(pending!=null) options.add("이전 입고 결과 확인")
                 AlertDialog.Builder(this@MainActivity).setTitle("필름 재고 · 입고").setItems(options.toTypedArray()) { _,index ->
                     if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 확인해 주세요.");return@setItems }
                     when(index) {
                         0 -> showDealerStock(uid,company,data)
                         1 -> if(pending!=null) message("이전 입고 결과부터 확인해 주세요.") else chooseReceiveDealer(uid,company,data)
-                        2 -> pending?.let { showPendingDealerReceive(uid,company,data,it) }
+                        2 -> openReceiptSettlement("receipt")
+                        3 -> pending?.let { showPendingDealerReceive(uid,company,data,it) }
                     }
                 }.setNegativeButton("닫기",null).show()
             } catch(e:CancellationException) { throw e }
@@ -1989,7 +1990,7 @@ class MainActivity : Activity() {
         val clients=data.optJSONArray("clients") ?: JSONArray()
         val list=(0 until clients.length()).mapNotNull { clients.optJSONObject(it) }.filter { query.isBlank() || it.optString("name").contains(query,true) }
         val pending=tradePending();val hasPending=pending.has("body")
-        val labels=mutableListOf("＋ 거래처 등록","거래처 검색","거래처별 현장 · 입금 확인","현장 연결 · 일괄 정산 (통합 화면)")
+        val labels=mutableListOf("＋ 거래처 등록","거래처 검색","거래처별 현장 · 입금 확인","거래처 일괄 정산")
         if(hasPending) labels.add("이전 저장 결과 다시 확인")
         labels.addAll(list.map { it.optString("name")+it.optString("phone").takeUnless { p -> p.isBlank() || p=="null" }?.let { p -> " · $p" }.orEmpty() })
         val header=4+(if(hasPending) 1 else 0)
@@ -2006,7 +2007,7 @@ class MainActivity : Activity() {
                         if(list.isEmpty()) { message("확인할 거래처가 없습니다.");return@setItems }
                         AlertDialog.Builder(this).setTitle("거래처 선택").setItems(list.map { it.optString("name") }.toTypedArray()) { _,i -> showTradeSites(uid,company,data,list[i]) }.setNegativeButton("닫기",null).show()
                     }
-                    index==3 -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/clients")
+                    index==3 -> openReceiptSettlement("settlement")
                     hasPending && index==4 -> retryTrade(uid,company)
                     index>=header -> showTradeClient(uid,company,data,list[index-header])
                 }
@@ -2257,6 +2258,11 @@ class MainActivity : Activity() {
         dialog.show()
     }
     private var workflowSitesBusy=false
+    private fun openReceiptSettlement(mode:String) {
+        val uid=account?.userId ?: return
+        val company=selectedCompany()?.takeIf { it.role=="관리자" } ?: return
+        if(sitePhotoSessionValid(uid,company)) startActivity(Intent(this,ReceiptSettlementActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("mode",mode))
+    }
     private fun showPhotoTasks() {
         val company=selectedCompany() ?: return
         val uid=account?.userId ?: return
@@ -2269,7 +2275,7 @@ class MainActivity : Activity() {
                     pickReportPhoto(ReportPhotoRequest(user,selected,id,name,"after"))
                 }
                 1 -> chooseScreenshotForSite()
-                2 -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/inventory")
+                2 -> openReceiptSettlement("receipt")
             }
         }.setNegativeButton("취소",null).show()
     }
