@@ -12,7 +12,7 @@ class NativeWorkflowTest {
             assertFalse(AssistantRequests.opensWeb(id))
             assertNotNull(NativeWorkflow.action(id))
         }
-        for(id in listOf("report","expenses","film-use")) {
+        for(id in listOf("report","expenses","film-use","worker-stock")) {
             assertNotNull(AssistantRequests.feature(id,false))
             assertFalse(AssistantRequests.opensWeb(id))
             assertNotNull(NativeWorkflow.action(id))

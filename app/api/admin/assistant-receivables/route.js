@@ -10,13 +10,24 @@ async function selectedAdmin(request) {
   if(request.headers.get('X-Assistant-Company')!==auth.companyId) return {error:'선택한 업체를 확인해 주세요.',status:403};
   return {auth};
 }
-async function checkedSiteResponse(response,companyId,siteId) {
+async function checkedSiteResponse(response,companyId,siteId,includeEntries=false) {
   const body=await response.json();
   if(!response.ok) return json({error:body.error || '입금 내역을 처리하지 못했습니다.'},response.status);
   const site=body?.site;
   if(!site || site.id!==siteId || site.company_id!==companyId) throw new Error('invalid site');
   const fields=['id','company_id','site_name','status','contract_amount','confirmed','paid','outstanding','opening_date','revision','vat_amount','supply_amount','amount_source'];
-  return json({site:Object.fromEntries(fields.map(key=>[key,site[key]??null])),companyId});
+  const result={site:Object.fromEntries(fields.map(key=>[key,site[key]??null])),companyId};
+  if(includeEntries) {
+    if(!Array.isArray(body.entries) || body.entries.length>1000) throw new Error('invalid entries');
+    result.entries=body.entries.map(entry=>{
+      if(!entry || entry.site_id!==siteId || entry.company_id!==companyId || !uuid(entry.id) ||
+        typeof entry.amount!=='number' || !Number.isFinite(entry.amount) || entry.amount<0 ||
+        !['payment','refund'].includes(entry.direction)) throw new Error('invalid entry');
+      const keys=['id','amount','paid_on','phase','direction','method','memo','voided_at'];
+      return Object.fromEntries(keys.map(key=>[key,entry[key]??null]));
+    });
+  }
+  return json(result);
 }
 
 export async function GET(request) {
@@ -29,7 +40,7 @@ export async function GET(request) {
     if(view==='detail') {
       const siteId=url.searchParams.get('siteId');
       if(!uuid(siteId)) return json({error:'현장을 확인해 주세요.'},400);
-      return await checkedSiteResponse(await existingGet(request),auth.companyId,siteId);
+      return await checkedSiteResponse(await existingGet(request),auth.companyId,siteId,url.searchParams.get('history')==='1');
     }
     if(view && view!=='items') return json({error:'조회 방식을 확인해 주세요.'},400);
     const filter=view==='items' ? (url.searchParams.get('filter') || 'unpaid') : 'unpaid';

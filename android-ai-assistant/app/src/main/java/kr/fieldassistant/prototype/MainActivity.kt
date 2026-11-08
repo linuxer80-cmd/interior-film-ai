@@ -1282,7 +1282,7 @@ class MainActivity : Activity() {
                 if(!prefs.edit().putString("selected_company",company.id).commit()) { message("업체 선택을 저장하지 못했습니다.");return true }
                 startActivity(Intent(this,AttendanceActivity::class.java).putExtra("user",uid).putExtra("company",company.id).putExtra("company_name",company.name))
             }
-            "quotes","report","assignment","expenses","film-use","payment" -> chooseWorkflowSite(featureId)
+            "quotes","report","assignment","expenses","film-use","payment","worker-stock" -> chooseWorkflowSite(featureId)
             "all" -> showFeatures()
             "customer-page" -> customerPageManager()
             "customer-chat" -> openCustomerChats()
@@ -1425,11 +1425,11 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("이전 입금 저장 결과 확인")
             .setMessage("$name\n${body.optString("paidOn")} · ${body.optString("amount")}원\n\n같은 요청 번호로 다시 확인하므로 중복 입금으로 저장하지 않습니다.")
             .setPositiveButton("다시 확인") { _,_ -> sendPendingPayment(uid,company) }
-            .setNeutralButton("입금 내역 확인 (웹앱)") { _,_ -> if(sitePhotoSessionValid(uid,company)) confirmWebAccount { openWebWorkspace("https://interior-film-ai.vercel.app/admin/receivables?siteId="+Uri.encode(body.optString("siteId"))) } }
+            .setNeutralButton("입금 내역 확인") { _,_ -> openSitePaymentHistory(uid,company,body.optString("siteId"),name) }
             .setNegativeButton("요청 정리") { _,_ ->
                 if(!sitePhotoSessionValid(uid,company) || paymentBusy) return@setNegativeButton
                 AlertDialog.Builder(this).setTitle("이전 요청 정리")
-                    .setMessage("웹앱에서 실제 입금 기록을 먼저 확인해 주세요. 이 버튼은 휴대폰의 확인 대기 요청만 지우며, 이미 저장된 입금은 취소하지 않습니다. 저장 여부를 확인하지 않고 다시 등록하면 중복될 수 있습니다.")
+                    .setMessage("입금 내역에서 실제 입금 기록을 먼저 확인해 주세요. 이 버튼은 휴대폰의 확인 대기 요청만 지우며, 이미 저장된 입금은 취소하지 않습니다. 저장 여부를 확인하지 않고 다시 등록하면 중복될 수 있습니다.")
                     .setPositiveButton("확인했고 요청 정리") { _,_ ->
                         if(sitePhotoSessionValid(uid,company) && !paymentBusy && paymentPending()?.optString("uid")==uid && paymentPending()?.optString("company")==company.id && paymentPending()?.optJSONObject("body")?.optString("requestId")==body.optString("requestId")) {
                             if(prefs.edit().remove("assistant_payment_pending").commit()) message("이전 확인 요청을 정리했습니다.") else message("이전 요청을 정리하지 못했습니다.")
@@ -1460,6 +1460,30 @@ class MainActivity : Activity() {
             finally { paymentBusy=false }
         }
     }
+    private fun openSitePaymentHistory(uid:String,company:CompanyAccess,siteId:String,name:String) {
+        if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
+        val epoch=sessionEpoch
+        scope.launch { try {
+            val data=auth.assistantSitePayment(uid,company.id,siteId,history=true)
+            if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+            val site=data.getJSONObject("site")
+            val entries=data.optJSONArray("entries") ?: error("입금 내역을 확인하지 못했습니다. 잠시 후 다시 확인해 주세요.")
+            val box=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
+            box.addView(text("확인된 입금 ${ReceivableDisplay.paid(site)} · 미수금 ${ReceivableDisplay.outstanding(site)}",15f,true))
+            box.addView(text("기준일 이전 입금은 초기 확인 총액에 포함될 수 있습니다. 취소된 기록은 합계에서 제외됩니다.",13f))
+            if(entries.length()==0) box.addView(text("별도로 등록된 입금 내역이 없습니다.",14f))
+            for(i in 0 until entries.length()) {
+                val entry=entries.getJSONObject(i)
+                fun value(k:String)=entry.optString(k).takeUnless { it=="null" }.orEmpty()
+                val phase=when(value("phase")) { "deposit"->"계약금";"interim"->"중도금";"balance"->"잔금";else->"입금" }
+                val state=if(!entry.isNull("voided_at")) "취소됨" else if(value("direction")=="refund") "환불" else phase
+                box.addView(text(value("paid_on")+" · "+state+" · "+ReceivableDisplay.amount(entry,"amount"),15f,true).apply { setPadding(0,dp(12),0,0) })
+                if(value("memo").isNotBlank()) box.addView(text(value("memo"),13f))
+            }
+            AlertDialog.Builder(this@MainActivity).setTitle("$name · 입금 내역").setView(ScrollView(this@MainActivity).apply { addView(box) })
+                .setPositiveButton("닫기",null).setNeutralButton("새로 확인") { _,_ -> openSitePaymentHistory(uid,company,siteId,name) }.show()
+        } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "입금 내역을 확인하지 못했습니다.") } }
+    }
     private fun openSitePayment(uid:String,company:CompanyAccess,siteId:String,name:String) {
         if(!sitePhotoSessionValid(uid,company) || company.role!="관리자" || paymentBusy) return
         if(paymentPending()!=null) { showPendingPayment(uid,company);return }
@@ -1482,6 +1506,7 @@ class MainActivity : Activity() {
             "공급가액 · ${ReceivableDisplay.amount(site,"supply_amount")}\n부가세 · ${ReceivableDisplay.amount(site,"vat_amount")}\n합계 (부가세 포함) · ${ReceivableDisplay.amount(site,"contract_amount")}"
         else "기준 금액 · ${ReceivableDisplay.amount(site,"contract_amount")}\n부가세 포함 여부를 확인해 주세요."
         form.addView(text("$base\n받은 금액 · ${ReceivableDisplay.paid(site)}\n남은 금액 · ${ReceivableDisplay.outstanding(site)}",14f))
+        addButton(form,"등록된 입금 내역 보기",false) { openSitePaymentHistory(uid,company,siteId,name) }
         form.addView(text(if(confirmed) "이번에 실제로 받은 금액을 입력해 주세요." else "처음 확인합니다. 지금까지 받은 총액을 입력해 주세요. 받은 금액이 없으면 0원을 입력합니다.",14f,true))
         val amount=EditText(this).apply { hint=if(confirmed) "이번 입금액 (원)" else "지금까지 받은 총액 (원)";inputType=InputType.TYPE_CLASS_NUMBER;filters=arrayOf(android.text.InputFilter.LengthFilter(13)) }
         val date=EditText(this).apply { hint="입금일 YYYY-MM-DD";setSingleLine();setText(ScheduleDates.today());filters=arrayOf(android.text.InputFilter.LengthFilter(10)) }
@@ -1964,10 +1989,10 @@ class MainActivity : Activity() {
         val clients=data.optJSONArray("clients") ?: JSONArray()
         val list=(0 until clients.length()).mapNotNull { clients.optJSONObject(it) }.filter { query.isBlank() || it.optString("name").contains(query,true) }
         val pending=tradePending();val hasPending=pending.has("body")
-        val labels=mutableListOf("＋ 거래처 등록","거래처 검색","현장 연결 · 입금 · 정산 (웹앱)")
+        val labels=mutableListOf("＋ 거래처 등록","거래처 검색","거래처별 현장 · 입금 확인","현장 연결 · 일괄 정산 (통합 화면)")
         if(hasPending) labels.add("이전 저장 결과 다시 확인")
         labels.addAll(list.map { it.optString("name")+it.optString("phone").takeUnless { p -> p.isBlank() || p=="null" }?.let { p -> " · $p" }.orEmpty() })
-        val header=3+(if(hasPending) 1 else 0)
+        val header=4+(if(hasPending) 1 else 0)
         AlertDialog.Builder(this).setTitle(if(query.isBlank()) "거래처 관리 · ${list.size}곳" else "‘$query’ 검색 · ${list.size}곳")
             .setItems(labels.toTypedArray()) { _,index ->
                 if(account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자") { message("관리자 계정과 업체를 다시 선택해 주세요.");return@setItems }
@@ -1977,8 +2002,12 @@ class MainActivity : Activity() {
                         val input=EditText(this).apply { hint="거래처 이름";setText(query);setSingleLine() }
                         AlertDialog.Builder(this).setTitle("거래처 검색").setView(input).setPositiveButton("찾기") { _,_ -> showTradeMenu(uid,company,data,input.text.toString().trim()) }.setNegativeButton("취소",null).show()
                     }
-                    index==2 -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/clients")
-                    hasPending && index==3 -> retryTrade(uid,company)
+                    index==2 -> {
+                        if(list.isEmpty()) { message("확인할 거래처가 없습니다.");return@setItems }
+                        AlertDialog.Builder(this).setTitle("거래처 선택").setItems(list.map { it.optString("name") }.toTypedArray()) { _,i -> showTradeSites(uid,company,data,list[i]) }.setNegativeButton("닫기",null).show()
+                    }
+                    index==3 -> openWebWorkspace("https://interior-film-ai.vercel.app/admin/clients")
+                    hasPending && index==4 -> retryTrade(uid,company)
                     index>=header -> showTradeClient(uid,company,data,list[index-header])
                 }
             }.setNegativeButton("닫기",null).show()
@@ -2022,7 +2051,8 @@ class MainActivity : Activity() {
                 val paid=if(site.optBoolean("confirmed")) amount(site,"paid") else "확인 필요"
                 val status=when(site.optString("status")) { "in_progress"->"시공 중";"completed"->"시공 완료";"cancelled"->"취소";"consulting"->"상담 중";"scheduled"->"시공 예정";else->"상태 확인 필요" }
                 AlertDialog.Builder(this).setTitle(siteName(site)).setMessage("상태: $status\n계약 금액: ${amount(site,"contract_amount")}\n확인된 입금: $paid\n미수금: ${amount(site,"outstanding")}\n\n조회 시점의 정보입니다. 금액이 확인되지 않은 항목은 확인 필요로 표시합니다.")
-                    .setPositiveButton("확인",null).show()
+                    .setPositiveButton("현장 상세") { _,_ -> if(sitePhotoSessionValid(uid,company)) lookupSites(AssistantRequests.Request("detail"),site.optString("id")) }
+                    .apply { if(site.optString("status")=="completed") setNeutralButton("입금 내역") { _,_ -> openSitePaymentHistory(uid,company,site.optString("id"),siteName(site)) } }.show()
             }.setNegativeButton("닫기",null).show()
     }
     private fun dialTrade(value:String) {
@@ -2580,7 +2610,7 @@ class MainActivity : Activity() {
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
                         val name=site.optString("site_name").takeUnless { it.isBlank() || it=="null" } ?: "선택한 현장"
                         if(owner) showPlannedSiteMaterials(uid,company,siteId,name,SiteMaterialSummary.describe(stock,siteId))
-                        else { appendHomeMessage("${name} · 자재 준비 현황\n\n"+SiteMaterialSummary.describe(stock,siteId));render() }
+                        else showWorkerMaterialMenu(uid,company,siteId,name,stock)
                     }
                     "phone" -> {
                         val phone=site.optString("customer_phone").filter { it.isDigit() || it=='+' }
@@ -2612,13 +2642,13 @@ class MainActivity : Activity() {
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
                         showNativeQuote(uid,company,siteId,quote)
                     }
-                    "schedule" -> {
+                    "schedule", "schedule_web" -> {
                         if(!owner) { message("관리자만 전체 배정을 볼 수 있습니다.");return@launch }
                         val assignments=auth.assistantAssignments(uid,companyId,siteId)
                         if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
                         showNativeAssignments(uid,company,siteId,assignments)
                     }
-                    "report" -> {
+                    "report", "report_web" -> {
                         if(owner) {
                             val report=auth.assistantAdminReview(uid,companyId,siteId)
                             if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=companyId || !active) return@launch
@@ -2640,6 +2670,19 @@ class MainActivity : Activity() {
               catch(_:Exception) { if(epoch==sessionEpoch) message("현장 정보를 확인하지 못했습니다. 인터넷과 로그인 상태를 확인해 주세요.") }
             finally { workerActionBusy=false }
         }
+    }
+    private fun showWorkerMaterialMenu(uid:String,company:CompanyAccess,siteId:String,name:String,stock:JSONObject) {
+        if(!sitePhotoSessionValid(uid,company)) return
+        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
+        box.addView(text(SiteMaterialSummary.describe(stock,siteId),14f))
+        val rows=stock.getJSONArray("materials")
+        for(i in 0 until rows.length()) {
+            val row=JSONObject(rows.getJSONObject(i).toString())
+            row.put("product_code",row.optString("code")).put("product_name",row.optString("name"))
+            addButton(box,row.optString("code").ifBlank { row.optString("name") }+" · 재고 확인·반출",false) { if(sitePhotoSessionValid(uid,company)) showMaterialRolls(uid,company,siteId,name,row) }
+        }
+        addButton(box,"사용량 입력 · 남은 필름 반납",true) { if(sitePhotoSessionValid(uid,company)) openSiteAction(company.id,siteId,"film") }
+        AlertDialog.Builder(this).setTitle("$name · 현장 자재").setView(ScrollView(this).apply { addView(box) }).setNegativeButton("닫기",null).show()
     }
     private fun showPlannedSiteMaterials(uid:String,company:CompanyAccess,siteId:String,name:String,stockSummary:String="") {
         if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
@@ -3155,8 +3198,8 @@ class MainActivity : Activity() {
             } })
             dialog.setView(ScrollView(this).apply { addView(actions) })
         }
-        dialog.setNeutralButton(if(result.optBoolean("canSubmit") && value("review_status") !in listOf("pending","approved")) "기존 보고서 화면 (웹)" else "보고서·사진 보기 (웹)") { _,_ ->
-            if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) openSiteAction(company.id,siteId,"report_web")
+        dialog.setNeutralButton("등록된 시공 사진 보기") { _,_ ->
+            if(account?.userId==uid && selectedCompany()?.id==company.id && selectedCompany()?.role==company.role) requestSitePhotoPage(uid,company,siteId,siteName,"all",0)
             else message("계정과 업체를 다시 확인해 주세요.")
         }
         dialog.show()

@@ -9,6 +9,7 @@ internal object NativeWorkflow {
         "report" -> "report"
         "expenses" -> "expenses"
         "film-use" -> "film"
+        "worker-stock" -> "materials"
         "payment" -> "payment"
         else -> null
     }
