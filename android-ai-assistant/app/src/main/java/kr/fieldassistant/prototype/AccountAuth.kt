@@ -365,7 +365,7 @@ internal class AccountAuth private constructor(context: Context) {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체가 변경되었습니다." }
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
-        if(body!=null) require(body.optString("siteId")==siteId && body.optString("action")=="return")
+        if(body!=null) require(body.optString("siteId")==siteId && body.optString("action") in setOf("return","issue"))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
             val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/film-stock"+(if(body==null) "?siteId=$siteId" else ""))
@@ -1016,7 +1016,9 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
-    suspend fun plannedSiteMaterials(expectedUser:String,companyId:String,siteId:String,body:JSONObject?=null):JSONObject {
+    suspend fun plannedSiteMaterials(expectedUser:String,companyId:String,siteId:String,body:JSONObject?=null,method:String=if(body==null) "GET" else "POST"):JSONObject {
+        require(method in setOf("GET","POST","PATCH","DELETE"))
+        require((method=="GET")== (body==null))
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
         require(body==null || body.optString("siteId")==siteId)
         val path="/api/admin/site-planned-materials"+(if(body==null) "?siteId=$siteId" else "")
@@ -1027,14 +1029,14 @@ internal class AccountAuth private constructor(context: Context) {
         return withContext(Dispatchers.IO) {
             val c=SecureTransport.open("https://interior-film-ai.vercel.app"+path)
             try {
-                c.instanceFollowRedirects=false;c.requestMethod=if(body==null) "GET" else "POST";c.connectTimeout=15000;c.readTimeout=30000
+                c.instanceFollowRedirects=false;c.requestMethod=method;c.connectTimeout=15000;c.readTimeout=30000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Cache-Control","no-store")
                 if(body!=null) { c.doOutput=true;c.setRequestProperty("Content-Type","application/json");c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) } }
                 val code=c.responseCode
                 val bytes=(if(code in 200..299)c.inputStream else c.errorStream)?.use { input -> val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(true){val n=input.read(buffer);if(n<0)break;check(out.size()+n<=8*1024*1024){"응답이 너무 큽니다."};out.write(buffer,0,n)};out.toByteArray() } ?: byteArrayOf()
                 check(bytes.size<=8*1024*1024) { "응답이 너무 큽니다." }
                 val result=try { JSONObject(String(bytes,Charsets.UTF_8)) } catch(_:Exception) { JSONObject() }
-                if(code==400) throw PlannedMaterialInputException(result.optString("error").ifBlank { "입력 내용을 확인해 주세요." })
+                if(code==400 || (method=="PATCH" && code==409)) throw PlannedMaterialInputException(result.optString("error").ifBlank { "입력 내용을 확인해 주세요." })
                 check(code in 200..299) { result.optString("error").ifBlank { "처리하지 못했습니다. 새로 확인해 주세요." } }
 
                 result
