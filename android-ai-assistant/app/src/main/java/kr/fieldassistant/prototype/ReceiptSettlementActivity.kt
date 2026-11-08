@@ -144,7 +144,7 @@ class ReceiptSettlementActivity:Activity() {
                 val allocations=JSONArray();sites.forEachIndexed{i,s->if(values[i]>0)allocations.put(JSONObject().put("siteId",s.getString("id")).put("revision",s.getInt("revision")).put("contractAmount",s.get("contract_amount")).put("amount",values[i]))}
                 val body=JSONObject().put("action","pay").put("requestId",UUID.randomUUID().toString()).put("clientId",client.getString("id")).put("contactScope","all").put("amount",n).put("paidOn",day).put("allocations",allocations)
                 val summary=sites.indices.filter{values[it]>0}.joinToString("\n"){value(sites[it],"site_name")+" · "+values[it]+"원"}
-                AlertDialog.Builder(this).setTitle("${n}원 · ${day}").setMessage(summary).setPositiveButton("정산 저장"){_,_->if(valid()&&!draft.has("pending")){draft=JSONObject().put("pending",body);save();dialog.dismiss();render();submit()}}.setNegativeButton("돌아가기",null).show()
+                AlertDialog.Builder(this).setTitle("${n}원 · ${day}").setMessage(summary).setPositiveButton("정산 저장"){_,_->if(valid()&&!busy&&!draft.has("pending")){try{draft=JSONObject().put("pending",body);save();dialog.dismiss();render();submit()}catch(e:Exception){notice(e.message?:"정산 요청을 보관하지 못했습니다.")}}}.setNegativeButton("돌아가기",null).show()
             }catch(e:Exception){notice(e.message?:"금액과 날짜를 확인해 주세요.")} } };dialog.show()
         }catch(e:Exception){notice(e.message.orEmpty())}
     }
@@ -154,7 +154,9 @@ class ReceiptSettlementActivity:Activity() {
             data=if(receipt)auth.dealerInventory(uid,company,body) else auth.tradeClients(uid,company,body)
             if(!valid())return@task
             if(receipt)draft.getJSONObject("analysis").getJSONArray("rows").getJSONObject(draft.getInt("rowIndex")).put("saved",true)
-            draft.remove("pending");save();if(!receipt) { data=auth.tradeClients(uid,company);if(!valid())return@task };notice(if(receipt)"입고를 저장했습니다." else "일괄 정산을 저장했습니다.");render()
+            draft.remove("pending");save();notice(if(receipt)"입고를 저장했습니다." else "일괄 정산을 저장했습니다.")
+            if(!receipt) { try { data=auth.tradeClients(uid,company) } catch(e:CancellationException){throw e} catch(_:Exception){data=JSONObject();notice("정산은 저장됐습니다. 최신 목록은 다시 확인해 주세요.")} }
+            if(valid())render()
         }catch(e:Exception){
             if(e is CancellationException)throw e
             if(valid() && (e is FilmRejected || (e is TradeApiFailure && e.status in listOf(400,403,409)))){draft.remove("pending");save();render()}
