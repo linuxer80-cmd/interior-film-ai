@@ -29,14 +29,14 @@ internal object AssistantRequests {
         Feature("leads","고객 상담 · 사진 견적","/admin?tab=leads",true),
         Feature("register","시공 사진 · 실적 등록","/admin?tab=register",true),
         Feature("work","내 배정 현장 · 완료보고","/worker"),
-        Feature("worker-stock","시공자 자재 반출 · 반입","/worker/inventory"),
+        Feature("worker-stock","시공자 자재 반출 · 반납","/worker/inventory"),
         Feature("cutting","재단","/worker/cutting"),
         Feature("attendance","출퇴근","/worker/attendance"),
         Feature("samples","필름 샘플","/samples"),
         Feature("jobs","구인 · 구직","/jobs"),
         Feature("all","필름장이 전체 기능","/")
     )
-    private val nativeFeatures=setOf("new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables","quotes","assignment","payment","report","expenses","film-use","all","attendance","workers","follow-ups")
+    private val nativeFeatures=setOf("worker-stock","new-site","customer-page","customer-chat","clients","jobs","sites","work","profit","samples","inventory","receivables","quotes","assignment","payment","report","expenses","film-use","all","attendance","workers","follow-ups")
     fun opensWeb(featureId:String):Boolean = featureId !in nativeFeatures
     fun parse(input:String,today:LocalDate): Request {
         val q=NaturalLanguage.normalize(input);val compact=q.replace(Regex("\\s+"),"")

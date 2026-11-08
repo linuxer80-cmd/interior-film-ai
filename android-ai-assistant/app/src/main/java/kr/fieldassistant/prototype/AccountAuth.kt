@@ -764,14 +764,14 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
-    suspend fun assistantSitePayment(expectedUser:String,companyId:String,siteId:String,body:JSONObject?=null):JSONObject {
+    suspend fun assistantSitePayment(expectedUser:String,companyId:String,siteId:String,body:JSONObject?=null,history:Boolean=false):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId && it.role=="관리자" }) { "관리자 권한을 확인해 주세요." }
         require(Regex("^[0-9a-fA-F-]{36}$").matches(companyId) && Regex("^[0-9a-fA-F-]{36}$").matches(siteId))
         if(body!=null) require(body.optString("siteId")==siteId && body.optString("action") in listOf("initialize","add"))
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
-            val path=if(body==null) "?view=detail&siteId="+Uri.encode(siteId) else ""
+            val path=if(body==null) "?view=detail&siteId="+Uri.encode(siteId)+(if(history) "&history=1" else "") else ""
             val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/admin/assistant-receivables"+path)
             try {
                 c.requestMethod=if(body==null) "GET" else "POST"

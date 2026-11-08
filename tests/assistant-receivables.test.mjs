@@ -81,3 +81,22 @@ test('payment requests keep the same id and body for the existing ledger and pre
   const bad=await runPayment({method:'POST',requestBody:{...paymentBody,action:'void'}});assert.equal(bad.result.status,400);assert.equal(bad.forwarded,0);
   const other=await runPayment({method:'POST',selected:'other',requestBody:paymentBody});assert.equal(other.result.status,403);assert.equal(other.forwarded,0);
 });
+
+test('native payment history is scoped, allowlisted and preserves refund and void markers',async()=>{
+  const entry={id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',company_id:'company',site_id:exampleSite.id,amount:5000,direction:'refund',paid_on:'2026-11-08',phase:'balance',method:'cash',memo:'반환',voided_at:'2026-11-08T01:00:00Z',created_by:'private-user'};
+  async function history(entries,selected='company') {
+    let calls=0;
+    const auth=async()=>({success:true,companyId:'company',userId:'user'});
+    const delegate=async()=>{calls++;return Response.json({site:exampleSite,entries})};
+    const get=new Function('authenticateAdmin','Response','existingGet',source+';return GET;')(auth,Response,delegate);
+    const result=await get(new Request('https://example.test/?view=detail&history=1&siteId='+exampleSite.id,{headers:{'X-Assistant-Company':selected}}));
+    return {result,calls};
+  }
+  const ok=await history([entry]);assert.equal(ok.result.status,200);
+  const row=(await ok.result.json()).entries[0];assert.equal(row.direction,'refund');assert.equal(row.voided_at,entry.voided_at);assert.equal(row.created_by,undefined);
+  for(const entries of [undefined,[{...entry,company_id:'other'}],[{...entry,site_id:'other'}],[{...entry,amount:null}],[{...entry,direction:'unknown'}]]) {
+    assert.equal((await history(entries)).result.status,503);
+  }
+  const empty=await history([]);assert.deepEqual((await empty.result.json()).entries,[]);
+  const denied=await history([entry],'other');assert.equal(denied.result.status,403);assert.equal(denied.calls,0);
+});
