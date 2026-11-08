@@ -2648,34 +2648,51 @@ class MainActivity : Activity() {
             try {
                 val data=auth.plannedSiteMaterials(uid,company.id,siteId)
                 if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                val stock=try { auth.filmStock(uid,company.id,siteId) } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
                 val rows=data.getJSONArray("materials")
                 val box=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
                 box.addView(text("현장에서 사용할 자재를 지정합니다. 실제 사용량과 반출·반납은 별도로 기록합니다.",13f))
                 if(rows.length()==0) box.addView(text("등록된 자재가 없습니다. 아래에서 추가해 주세요.",15f))
+                lateinit var dialog:AlertDialog
                 for(i in 0 until rows.length()) {
                     val row=rows.getJSONObject(i)
                     fun value(key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty()
                     box.addView(text(listOf(value("brand"),value("product_code"),value("product_name")).filter { it.isNotBlank() }.joinToString(" · "),16f,true))
                     box.addView(text((if(value("price_type")=="fire") "방염" else "비방염")+" · 원가 단가 "+value("unit_price").ifBlank { "미확정" }+(if(value("unit_price").isNotBlank()) "원/${value("unit").ifBlank { "m" }}" else "")+value("memo").takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty(),13f))
+                    box.addView(text(PlannedMaterialStock.summary(stock,row.optString("id"),row.optString("price_type")),13f))
+                    if(data.optBoolean("canWrite")) {
+                        addButton(box,"수정 · 제외",false) {
+                            if(!sitePhotoSessionValid(uid,company)) return@addButton
+                            AlertDialog.Builder(this@MainActivity).setTitle(value("product_code").ifBlank { value("product_name") })
+                                .setItems(arrayOf("자재 수정","현장 자재에서 제외")) { _,which ->
+                                    if(!sitePhotoSessionValid(uid,company)) return@setItems
+                                    if(which==0) { dialog.dismiss();editPlannedSiteMaterial(uid,company,siteId,name,row) }
+                                    else removePlannedSiteMaterial(uid,company,siteId,name,row) { dialog.dismiss() }
+                                }.setNegativeButton("닫기",null).show()
+                        }
+                    }
+                    addButton(box,"재고 확인 · 반출",false) { if(sitePhotoSessionValid(uid,company)) showMaterialRolls(uid,company,siteId,name,row) }
                 }
-                val dialog=AlertDialog.Builder(this@MainActivity).setTitle("$name · 자재 ${rows.length()}개").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("닫기",null).create()
+                dialog=AlertDialog.Builder(this@MainActivity).setTitle("$name · 자재 ${rows.length()}개").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("닫기",null).create()
                 if(data.optBoolean("canWrite")) addButton(box,"자재 추가",true) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();editPlannedSiteMaterial(uid,company,siteId,name) } }
                 if(stockSummary.isNotBlank()) addButton(box,"반출·사용 현황 보기",false) { AlertDialog.Builder(this@MainActivity).setTitle("자재 준비 현황").setMessage(stockSummary).setPositiveButton("닫기",null).show() }
                 dialog.show()
             } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "자재 목록을 확인하지 못했습니다.") }
         }
     }
-    private fun editPlannedSiteMaterial(uid:String,company:CompanyAccess,siteId:String,name:String) {
+    private fun editPlannedSiteMaterial(uid:String,company:CompanyAccess,siteId:String,name:String,existing:JSONObject?=null) {
         if(!sitePhotoSessionValid(uid,company) || company.role!="관리자") return
-        val key="planned_material_${uid}_${company.id}_${siteId}"
-        val seed=try { JSONObject(prefs.getString(key,"{}").orEmpty()) } catch(_:Exception) { JSONObject() }
+        val key="planned_material_${uid}_${company.id}_${siteId}"+(existing?.optString("id")?.let { "_edit_$it" } ?: "")
+        val seed=try { JSONObject(prefs.getString(key,null) ?: existing?.toString() ?: "{}") } catch(_:Exception) { existing ?: JSONObject() }
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
         val fields=listOf("brand" to "브랜드", "product_code" to "제품번호", "product_name" to "제품명", "unit_price" to "원가 단가 (선택 · 비우면 거래처 단가 확인)", "memo" to "사용 부위·메모 (선택)")
-        val inputs=fields.associate { (k,label) -> form.addView(text(label,13f,true));k to EditText(this).apply { setText(seed.optString(k));hint=label;filters=arrayOf(android.text.InputFilter.LengthFilter(if(k=="memo") 1000 else 100));form.addView(this) } }
+        val inputs=fields.associate { (k,label) -> form.addView(text(label,13f,true));k to EditText(this).apply { setText(seed.optString(k).takeUnless { it=="null" }.orEmpty());hint=label;filters=arrayOf(android.text.InputFilter.LengthFilter(if(k=="memo") 1000 else 100));form.addView(this) } }
         inputs.getValue("unit_price").inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         val type=Spinner(this).apply { adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("방염 구분 선택","비방염","방염"));setSelection(when(seed.optString("price_type")) { "non_fire"->1;"fire"->2;else->0 }) };form.addView(type)
         var pending=seed.optJSONObject("pending")
         var busy=false
+        val next=CheckBox(this).apply { text="저장 후 다음 자재 추가";visibility=if(existing==null) View.VISIBLE else View.GONE };form.addView(next)
         fun draft():JSONObject { val d=JSONObject();fields.forEach { (k,_) -> d.put(k,inputs.getValue(k).text.toString().trim()) };d.put("price_type",when(type.selectedItemPosition) { 1->"non_fire";2->"fire";else->"" });pending?.let { d.put("pending",it) };return d }
         fun preserve() { if(sitePhotoSessionValid(uid,company)) prefs.edit().putString(key,draft().toString()).apply() }
         val status=text(if(pending!=null) "이전 저장 결과 확인 필요 · 같은 요청으로 다시 확인합니다." else "수량은 반출·반납에서 관리합니다. 단위는 m입니다.",13f);form.addView(status)
@@ -2701,11 +2718,11 @@ class MainActivity : Activity() {
             } };find.show()
         }
         fields.forEach { (k,_) -> inputs.getValue(k).addTextChangedListener(object:android.text.TextWatcher { override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {} ;override fun afterTextChanged(s:android.text.Editable?) {};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { preserve() } }) }
-        val dialog=AlertDialog.Builder(this).setTitle("$name · 자재 추가").setView(ScrollView(this).apply { addView(form) }).setNegativeButton("임시 보관 후 닫기",null).setPositiveButton("저장",null).create()
+        val dialog=AlertDialog.Builder(this).setTitle("$name · "+if(existing==null) "자재 추가" else "자재 수정").setView(ScrollView(this).apply { addView(form) }).setNegativeButton("임시 보관 후 닫기",null).setPositiveButton("저장",null).create()
         dialog.setOnDismissListener { preserve() }
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(busy || !sitePhotoSessionValid(uid,company)) return@setOnClickListener
-            val body=pending ?: draft().put("id",UUID.randomUUID().toString()).put("siteId",siteId).put("unit","m")
+            val body=pending ?: draft().apply { if(existing!=null) put("_baseline",existing) }.put("id",existing?.getString("id") ?: UUID.randomUUID().toString()).put("siteId",siteId).put("unit",existing?.optString("unit")?.takeUnless { it.isBlank() || it=="null" } ?: "m")
             if(body.optString("product_code").isBlank() && body.optString("product_name").isBlank()) { inputs.getValue("product_code").error="제품번호 또는 제품명을 입력해 주세요";return@setOnClickListener }
             if(body.optString("price_type").isBlank()) { message("방염 또는 비방염을 선택해 주세요.");return@setOnClickListener }
             val price=body.optString("unit_price");if(price.isNotBlank() && (price.toBigDecimalOrNull()?.let { it.signum()>=0 && it<=java.math.BigDecimal(100000000) }!=true)) { inputs.getValue("unit_price").error="올바른 단가를 입력해 주세요";return@setOnClickListener }
@@ -2713,9 +2730,17 @@ class MainActivity : Activity() {
             if(!prefs.edit().putString(key,draft().toString()).commit()) { pending=null;message("저장 요청을 보관하지 못했습니다.");return@setOnClickListener }
             busy=true;lock(true);dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false;status.text="저장 중…";val epoch=sessionEpoch
             scope.launch { try {
-                val saved=auth.plannedSiteMaterials(uid,company.id,siteId,body)
+                var editAlreadySaved=false
+                if(existing!=null) {
+                    val latest=auth.plannedSiteMaterials(uid,company.id,siteId).getJSONArray("materials")
+                    val current=(0 until latest.length()).mapNotNull { latest.optJSONObject(it) }.find { it.optString("id")==existing.optString("id") }
+                    editAlreadySaved=current!=null && listOf("brand","product_code","product_name","price_type","unit_price","memo").all { k -> current.optString(k).takeUnless { it=="null" }.orEmpty()==body.optString(k).takeUnless { it=="null" }.orEmpty() }
+                    if(!editAlreadySaved && (current==null || PlannedMaterialStock.signature(current)!=PlannedMaterialStock.signature(body.optJSONObject("_baseline") ?: existing))) throw PlannedMaterialInputException("자재가 다른 곳에서 변경되었습니다. 목록을 다시 열어 확인해 주세요.")
+                }
                 if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
-                dialog.setOnDismissListener(null);prefs.edit().remove(key).apply();dialog.dismiss();message((if(saved.optBoolean("alreadyExists")) "이미 등록된 자재를 확인했습니다." else "현장 자재를 추가했습니다.")+(if(saved.optBoolean("missingPrice")) " 원가 단가는 확인이 필요합니다." else ""));showPlannedSiteMaterials(uid,company,siteId,name)
+                val saved=if(editAlreadySaved) JSONObject().put("success",true) else auth.plannedSiteMaterials(uid,company.id,siteId,body,if(existing==null) "POST" else "PATCH")
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                dialog.setOnDismissListener(null);prefs.edit().remove(key).apply();dialog.dismiss();message((if(saved.optBoolean("alreadyExists")) "이미 등록된 자재를 확인했습니다." else if(existing!=null) "현장 자재를 수정했습니다." else "현장 자재를 추가했습니다.")+(if(saved.optBoolean("missingPrice")) " 원가 단가는 확인이 필요합니다." else ""));if(existing==null && next.isChecked) editPlannedSiteMaterial(uid,company,siteId,name) else showPlannedSiteMaterials(uid,company,siteId,name)
             } catch(e:CancellationException) { throw e } catch(e:Exception) {
                 if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) {
                     if(e is PlannedMaterialInputException) { pending=null;lock(false);preserve();status.text="입력 수정 필요";message(e.message ?: "입력 내용을 확인해 주세요.") }
@@ -2723,6 +2748,81 @@ class MainActivity : Activity() {
                 }
             } finally { busy=false;if(dialog.isShowing) dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true } }
         } };dialog.show()
+    }
+    private fun removePlannedSiteMaterial(uid:String,company:CompanyAccess,siteId:String,name:String,row:JSONObject,onRemoved:()->Unit) {
+        var busy=false
+        val label=listOf(row.optString("brand"),row.optString("product_code")).joinToString(" ")
+        val dialog=AlertDialog.Builder(this).setTitle("현장 자재에서 제외")
+            .setMessage("$name · $label\n\n반출 중인 자재는 제외할 수 없습니다. 전량 반납한 자재는 기존 반출·반납 기록을 보존해 제외합니다.")
+            .setNegativeButton("취소",null).setPositiveButton("제외",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(busy || !sitePhotoSessionValid(uid,company)) return@setOnClickListener
+            busy=true;dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false;val epoch=sessionEpoch
+            scope.launch { try {
+                val latest=auth.plannedSiteMaterials(uid,company.id,siteId).getJSONArray("materials")
+                val current=(0 until latest.length()).mapNotNull { latest.optJSONObject(it) }.find { it.optString("id")==row.optString("id") }
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                if(current!=null) {
+                    check(PlannedMaterialStock.signature(current)==PlannedMaterialStock.signature(row)) { "자재 내용이 변경됐습니다. 목록을 새로 열어 주세요." }
+                    auth.plannedSiteMaterials(uid,company.id,siteId,JSONObject().put("siteId",siteId).put("id",row.getString("id")),"DELETE")
+                }
+                if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                dialog.dismiss();onRemoved();message("현장 자재 목록에서 제외했습니다.");showPlannedSiteMaterials(uid,company,siteId,name)
+            } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "제외 결과를 확인하지 못했습니다. 목록을 다시 확인해 주세요.") }
+            finally { busy=false;if(dialog.isShowing) dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true } }
+        } };dialog.show()
+    }
+    private fun showMaterialRolls(uid:String,company:CompanyAccess,siteId:String,name:String,material:JSONObject) {
+        if(!sitePhotoSessionValid(uid,company)) return
+        val epoch=sessionEpoch
+        scope.launch { try {
+            val stock=auth.filmStock(uid,company.id,siteId)
+            if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+            val id=material.getString("id");val type=material.optString("price_type")
+            val rolls=PlannedMaterialStock.eligible(stock,id,type)
+            val box=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
+            val needed=EditText(this@MainActivity).apply { hint="필요한 길이 (m · 선택)";inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL;filters=arrayOf(android.text.InputFilter.LengthFilter(12)) };box.addView(needed)
+            val summary=text(PlannedMaterialStock.summary(stock,id,type),14f);box.addView(summary)
+            needed.addTextChangedListener(object:android.text.TextWatcher { override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {};override fun afterTextChanged(s:android.text.Editable?) {};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { summary.text=PlannedMaterialStock.summary(stock,id,type,s?.toString()?.toBigDecimalOrNull()) } })
+            val key="material_issue_${uid}_${company.id}_${siteId}_$id"
+            val pending=try { prefs.getString(key,null)?.let { JSONObject(it) } } catch(_:Exception) { null }
+            var busy=false
+            lateinit var dialog:AlertDialog
+            fun submit(body:JSONObject) {
+                if(busy || !sitePhotoSessionValid(uid,company)) return
+                if(!prefs.edit().putString(key,body.toString()).commit()) { message("반출 요청을 보관하지 못했습니다.");return }
+                busy=true
+                scope.launch { try {
+                    auth.filmStock(uid,company.id,siteId,body)
+                    if(epoch!=sessionEpoch || !sitePhotoSessionValid(uid,company)) return@launch
+                    prefs.edit().remove(key).apply();dialog.dismiss();message("선택한 롤을 반출했습니다.");showMaterialRolls(uid,company,siteId,name,material)
+                } catch(e:CancellationException) { throw e } catch(e:Exception) {
+                    if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) {
+                        if(e is FilmRejected) prefs.edit().remove(key).apply()
+                        message((e.message ?: "반출 결과를 확인하지 못했습니다.")+"\n재고를 다시 조회해 주세요. 결과 미확인 요청은 같은 번호로 확인합니다.")
+                        dialog.dismiss();showMaterialRolls(uid,company,siteId,name,material)
+                    }
+                } finally { busy=false } }
+            }
+            if(pending!=null) {
+                box.addView(text("이전 반출 결과를 확인하지 못했습니다. 새 반출 전에 이전 요청부터 확인해 주세요.",14f,true))
+                addButton(box,"이전 반출 결과 확인",true) { submit(pending) }
+            } else if(stock.optBoolean("canIssue",stock.optBoolean("canEdit"))) {
+                rolls.forEach { roll ->
+                    val label=roll.optString("label").ifBlank { roll.optString("product_code") }+" · "+roll.optString("remaining")+"m · "+if(type=="fire") "방염" else "비방염"
+                    addButton(box,label+" 반출",false) {
+                        if(busy || !sitePhotoSessionValid(uid,company)) return@addButton
+                        AlertDialog.Builder(this@MainActivity).setTitle("롤 반출 확인").setMessage("$name\n$label\n선택한 롤의 남은 길이 전체를 이 현장으로 반출합니다.")
+                            .setNegativeButton("취소",null).setPositiveButton("반출") { _,_ ->
+                                submit(JSONObject().put("action","issue").put("siteId",siteId).put("materialId",id).put("rollId",roll.getString("id")).put("revision",roll.getInt("revision")).put("requestId",UUID.randomUUID().toString()))
+                            }.show()
+                    }
+                }
+            } else box.addView(text("현재 현장은 반출 권한 또는 상태를 확인해야 합니다.",13f))
+            dialog=AlertDialog.Builder(this@MainActivity).setTitle("${material.optString("product_code")} · 창고 재고").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("닫기",null)
+                .setNeutralButton("새로고침") { _,_ -> if(!busy) showMaterialRolls(uid,company,siteId,name,material) }.create()
+            dialog.show()
+        } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "재고를 불러오지 못했습니다.") } }
     }
     private fun showWrapUp(uid:String,company:CompanyAccess,siteId:String,name:String,report:JSONObject?,support:JSONObject?,stock:JSONObject?) {
         if(!sitePhotoSessionValid(uid,company) || company.role!="시공자") return
