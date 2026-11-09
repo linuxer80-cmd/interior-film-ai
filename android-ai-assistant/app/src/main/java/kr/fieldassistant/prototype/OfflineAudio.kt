@@ -11,7 +11,6 @@ import kr.fieldassistant.prototype.WhisperModel as Model
 import kr.fieldassistant.prototype.WhisperRecognizer as Recognizer
 import java.io.File
 import java.nio.ByteOrder
-import java.security.MessageDigest
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -54,10 +53,17 @@ internal object OfflineModel {
     private const val SHA="ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb"
     private const val SOURCE="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"
     private val HOSTS=setOf("huggingface.co","cdn-lfs.huggingface.co","cdn-lfs-us-1.hf.co","cas-bridge.xethub.hf.co","transfer.xethub.hf.co","us.aws.cdn.hf.co")
+    private var verifiedPath:String?=null
     @Synchronized fun ensure(context:Context,cancelled:()->Boolean={false}):File {
         val destination=File(context.filesDir,NAME)
         val marker=File(context.filesDir,"whisper-small-q5.complete")
-        if(destination.isFile && destination.length()==SIZE && marker.isFile && marker.readText()==SHA) return destination
+        if(destination.isFile && destination.length()==SIZE && marker.isFile && marker.readText()==SHA) {
+            if(verifiedPath==destination.absolutePath) return destination
+            try {
+                destination.inputStream().buffered().use { ModelIntegrity.copyVerified(it,object:java.io.OutputStream() { override fun write(b:Int) {} ; override fun write(b:ByteArray,off:Int,len:Int) {} },SIZE,SHA,cancelled) }
+                verifiedPath=destination.absolutePath;return destination
+            } catch(e:InterruptedException) { throw e } catch(_:Exception) { verifiedPath=null }
+        }
         val tmp=File(context.filesDir,"$NAME.tmp")
         try {
             check(context.filesDir.usableSpace>SIZE+16_000_000L) { "음성 모델을 준비할 저장 공간이 부족합니다." }
@@ -77,20 +83,11 @@ internal object OfflineModel {
                     check(code==200) { "음성 모델 다운로드에 실패했습니다. 네트워크를 확인해 주세요." }
                     val reported=c.contentLengthLong
                     check(reported<0 || reported==SIZE) { "음성 모델 크기가 올바르지 않습니다." }
-                    val digest=MessageDigest.getInstance("SHA-256");var size=0L
                     c.inputStream.use { input -> tmp.outputStream().buffered().use { out ->
-                        val block=ByteArray(65536)
-                        while(true) {
-                            if(cancelled()) throw InterruptedException("모델 준비가 중단되었습니다.")
-                            val n=input.read(block);if(n<0)break
-                            size+=n;check(size<=SIZE) { "음성 모델 크기가 올바르지 않습니다." }
-                            digest.update(block,0,n);out.write(block,0,n)
-                        }
+                        ModelIntegrity.copyVerified(input,out,SIZE,SHA,cancelled)
                     } }
-                    val actual=digest.digest().joinToString("") { "%02x".format(it) }
-                    check(size==SIZE && actual==SHA) { "음성 모델 파일 검증에 실패했습니다." }
-                    if(destination.exists()) check(destination.delete())
-                    check(tmp.renameTo(destination)) { "음성 모델을 저장하지 못했습니다." }
+                    java.nio.file.Files.move(tmp.toPath(),destination.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING,java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+                    verifiedPath=destination.absolutePath
                     marker.writeText(SHA);completed=true;break
                 } finally { c.disconnect() }
             }
