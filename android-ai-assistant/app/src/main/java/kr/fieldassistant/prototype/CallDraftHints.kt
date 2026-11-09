@@ -13,8 +13,11 @@ object CallDraftHints {
     }
 
     fun work(transcript: String): String {
-        val names = listOf("화장대", "신발장", "붙박이장", "냉장고장", "싱크대", "방화문", "중문", "몰딩", "문틀")
-        return names.filter { transcript.contains(it) }.joinToString(" · ")
+        val names = listOf("화장대", "신발장", "붙박이장", "냉장고장", "팬트리장", "싱크대", "현관문", "방화문", "중문", "문짝", "몰딩", "문틀", "엘리베이터")
+        // Speech recognition often inserts spaces in compound names.
+        // Compare without whitespace while keeping the familiar labels for review.
+        val normalized = transcript.replace(Regex("\\s+"), "")
+        return names.filter { normalized.contains(it) }.joinToString(" · ")
     }
 
     /** Extract small, clearly labelled snippets for review; never upload the full transcript. */
