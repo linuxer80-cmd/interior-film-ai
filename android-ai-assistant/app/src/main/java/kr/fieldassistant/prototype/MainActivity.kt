@@ -2245,16 +2245,41 @@ class MainActivity : Activity() {
         val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(12)) }
         val dialog=AlertDialog.Builder(this).setTitle("${company.name} · 업무")
             .setView(ScrollView(this).apply { addView(content) }).setNegativeButton("닫기",null).create()
-        fun group(title:String,items:List<AssistantRequests.Feature>) {
-            content.addView(text(title,15f,true).apply { setPadding(0,dp(14),0,dp(6)) })
-            items.forEach { feature -> addButton(content,feature.title,false) {
-                if(!sitePhotoSessionValid(uid,company)) { dialog.dismiss();message("계정과 업체를 다시 확인해 주세요.");return@addButton }
-                dialog.dismiss();chatId=null;settingsOpen=false;openFeature(feature)
-            } }
+        val search=EditText(this).apply { hint="업무 검색 (예: 자재, 입금, 채팅)";setSingleLine();filters=arrayOf(android.text.InputFilter.LengthFilter(100)) }
+        content.addView(search)
+        val list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };content.addView(list)
+        val categories=listOf(
+            "현장 · 시공" to setOf("new-site","sites","work","assignment","report","expenses","film-use","worker-stock","attendance","cutting","register"),
+            "자재 · 견적" to setOf("inventory","samples","quotes","quote-documents"),
+            "고객 · 거래처" to setOf("customer-chat","customer-page","clients","leads","follow-ups"),
+            "매출 · 팀" to setOf("payment","receivables","profit","workers","jobs")
+        )
+        fun display(query:String) {
+            list.removeAllViews()
+            val q=query.trim().replace(Regex("\\s+"),"")
+            val shown=mutableSetOf<String>()
+            fun group(title:String,items:List<AssistantRequests.Feature>) {
+                if(items.isEmpty()) return
+                list.addView(text(title,15f,true).apply { setPadding(0,dp(14),0,dp(6)) })
+                items.forEach { feature ->
+                    shown.add(feature.id)
+                    addButton(list,feature.title+if(AssistantRequests.opensWeb(feature.id)) " · 통합 화면" else "",false) {
+                        if(!sitePhotoSessionValid(uid,company)) { dialog.dismiss();message("계정과 업체를 다시 확인해 주세요.");return@addButton }
+                        dialog.dismiss();chatId=null;settingsOpen=false;openFeature(feature)
+                    }
+                }
+            }
+            val matched=features.filter { q.isBlank() || (it.title+it.id).replace(Regex("\\s+"),"").contains(q,ignoreCase=true) }
+            categories.forEach { (title,ids) -> group(title,matched.filter { it.id in ids }) }
+            group("기타 업무",matched.filter { it.id !in shown })
+            if(matched.isEmpty()) list.addView(text("검색 결과가 없습니다. 다른 단어로 찾아보세요.",14f))
         }
-        group("앱에서 바로 처리",features.filter { !AssistantRequests.opensWeb(it.id) })
-        group("앱 내 통합 화면",features.filter { AssistantRequests.opensWeb(it.id) })
-        content.addView(text("통합 화면은 처음 한 번 같은 계정으로 로그인해 주세요. 외부 브라우저로 이동하지 않고 앱 안에서 사용합니다.",13f))
+        search.addTextChangedListener(object:android.text.TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { display(s?.toString().orEmpty()) }
+            override fun afterTextChanged(s:android.text.Editable?) {}
+        })
+        display("")
         dialog.show()
     }
     private var workflowSitesBusy=false
@@ -2702,13 +2727,14 @@ class MainActivity : Activity() {
                 val rows=data.getJSONArray("materials")
                 val box=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12)) }
                 box.addView(text("현장에서 사용할 자재를 지정합니다. 실제 사용량과 반출·반납은 별도로 기록합니다.",13f))
-                if(rows.length()==0) box.addView(text("등록된 자재가 없습니다. 아래에서 추가해 주세요.",15f))
+                if(rows.length()==0) box.addView(text(if(data.optBoolean("canWrite")) "등록된 자재가 없습니다. 자재를 추가해 주세요." else "등록된 자재가 없습니다.",15f))
                 lateinit var dialog:AlertDialog
+                if(data.optBoolean("canWrite")) addButton(box,"＋ 자재 추가",true) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();editPlannedSiteMaterial(uid,company,siteId,name) } }
                 for(i in 0 until rows.length()) {
                     val row=rows.getJSONObject(i)
                     fun value(key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty()
                     box.addView(text(listOf(value("brand"),value("product_code"),value("product_name")).filter { it.isNotBlank() }.joinToString(" · "),16f,true))
-                    box.addView(text((if(value("price_type")=="fire") "방염" else "비방염")+" · 원가 단가 "+value("unit_price").ifBlank { "미확정" }+(if(value("unit_price").isNotBlank()) "원/${value("unit").ifBlank { "m" }}" else "")+value("memo").takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty(),13f))
+                    box.addView(text((when(value("price_type")) { "fire" -> "방염";"non_fire" -> "비방염";else -> "방염 구분 확인 필요" })+" · 원가 단가 "+value("unit_price").ifBlank { "미확정" }+(if(value("unit_price").isNotBlank()) "원/${value("unit").ifBlank { "m" }}" else "")+value("memo").takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty(),13f))
                     box.addView(text(PlannedMaterialStock.summary(stock,row.optString("id"),row.optString("price_type")),13f))
                     if(data.optBoolean("canWrite")) {
                         addButton(box,"수정 · 제외",false) {
@@ -2724,7 +2750,6 @@ class MainActivity : Activity() {
                     addButton(box,"재고 확인 · 반출",false) { if(sitePhotoSessionValid(uid,company)) showMaterialRolls(uid,company,siteId,name,row) }
                 }
                 dialog=AlertDialog.Builder(this@MainActivity).setTitle("$name · 자재 ${rows.length()}개").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("닫기",null).create()
-                if(data.optBoolean("canWrite")) addButton(box,"자재 추가",true) { if(sitePhotoSessionValid(uid,company)) { dialog.dismiss();editPlannedSiteMaterial(uid,company,siteId,name) } }
                 if(stockSummary.isNotBlank()) addButton(box,"반출·사용 현황 보기",false) { AlertDialog.Builder(this@MainActivity).setTitle("자재 준비 현황").setMessage(stockSummary).setPositiveButton("닫기",null).show() }
                 dialog.show()
             } catch(e:CancellationException) { throw e } catch(e:Exception) { if(epoch==sessionEpoch && sitePhotoSessionValid(uid,company)) message(e.message ?: "자재 목록을 확인하지 못했습니다.") }
