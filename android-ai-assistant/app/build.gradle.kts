@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -54,7 +55,7 @@ val verifyBundledVoiceModel by tasks.registering {
     val model = layout.projectDirectory.file("src/main/assets/ggml-small-q5_1.bin")
     inputs.file(model)
     doLast {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val digest = MessageDigest.getInstance("SHA-256")
         model.asFile.inputStream().buffered().use { stream ->
             val buffer = ByteArray(65536)
             while (true) { val n = stream.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
