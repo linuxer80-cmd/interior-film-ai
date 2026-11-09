@@ -575,7 +575,7 @@ class MainActivity : Activity() {
                         updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
                     } catch(e:CancellationException) { throw e }
                       catch(_: Exception) {
-                        if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 저장 공간을 확인해 주세요. 첫 분석에는 인터넷으로 음성 모델을 받아야 합니다. 연결을 확인한 뒤 다시 시도해 주세요.")
+                        if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 휴대폰 저장 공간을 확인한 뒤 다시 시도해 주세요.")
                     } finally {
                         if(locked) BackgroundCalls.running.set(false)
                         if(epoch==sessionEpoch) { offlineQueue.remove(current);offlineQueued.remove(current) }
@@ -5085,7 +5085,7 @@ class MainActivity : Activity() {
     private fun startSimpleSetup() {
         if(setupBusy || baselineBusy) { message("준비 중입니다. 잠시 기다려 주세요.");return }
         AlertDialog.Builder(this).setTitle("비서 간편 설정")
-            .setMessage("통화 자동 분석을 사용할 때만 설정하면 됩니다. 직접 현장 등록·완료보고는 이 설정 없이 이용할 수 있습니다.\n\n통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 첫 녹음 확인 시 약 190MB를 다운로드하고 이후 재사용합니다. Wi-Fi 연결을 권장합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
+            .setMessage("통화 자동 분석을 사용할 때만 설정하면 됩니다. 직접 현장 등록·완료보고는 이 설정 없이 이용할 수 있습니다.\n\n통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 앱에 포함되어 있으며 첫 녹음 확인 시 준비합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
             .setNegativeButton("나중에",null).setPositiveButton("시작") { _,_ ->
                 simpleSetup=true
                 if(folder()==null) openFolderPicker() else continueSimpleSetup()
@@ -5098,7 +5098,7 @@ class MainActivity : Activity() {
             folderStatus="폴더가 연결됐습니다. 알림을 허용해 주세요."
             render();configureNotifications()
         } else {
-            folderStatus="폴더와 알림이 연결됐습니다. 첫 새 녹음에서 음성 모델 약 190MB를 다운로드합니다."
+            folderStatus="폴더와 알림이 연결됐습니다. 첫 새 녹음에서 기본 음성 모델을 준비합니다."
             render();scanFolder()
         }
     }

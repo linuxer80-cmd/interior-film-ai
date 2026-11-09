@@ -51,8 +51,6 @@ internal object OfflineModel {
     private const val NAME="ggml-small-q5_1.bin"
     private const val SIZE=190085487L
     private const val SHA="ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb"
-    private const val SOURCE="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"
-    private val HOSTS=setOf("huggingface.co","cdn-lfs.huggingface.co","cdn-lfs-us-1.hf.co","cas-bridge.xethub.hf.co","transfer.xethub.hf.co","us.aws.cdn.hf.co")
     private var verifiedPath:String?=null
     @Synchronized fun ensure(context:Context,cancelled:()->Boolean={false}):File {
         val destination=File(context.filesDir,NAME)
@@ -67,31 +65,11 @@ internal object OfflineModel {
         val tmp=File(context.filesDir,"$NAME.tmp")
         try {
             check(context.filesDir.usableSpace>SIZE+16_000_000L) { "음성 모델을 준비할 저장 공간이 부족합니다." }
-            var url=java.net.URI(SOURCE)
-            var completed=false
-            for(attempt in 0..5) {
-                if(cancelled()) throw InterruptedException("모델 준비가 중단되었습니다.")
-                check(url.scheme=="https" && url.userInfo==null && url.port in listOf(-1,443) && url.host in HOSTS) { "모델 다운로드 주소를 확인할 수 없습니다." }
-                val c=SecureTransport.open(url.toString())
-                try {
-                    c.readTimeout=60000
-                    val code=c.responseCode
-                    if(code in listOf(301,302,303,307,308)) {
-                        val next=c.getHeaderField("Location") ?: error("모델 다운로드 주소가 없습니다.")
-                        url=url.resolve(next);continue
-                    }
-                    check(code==200) { "음성 모델 다운로드에 실패했습니다. 네트워크를 확인해 주세요." }
-                    val reported=c.contentLengthLong
-                    check(reported<0 || reported==SIZE) { "음성 모델 크기가 올바르지 않습니다." }
-                    c.inputStream.use { input -> tmp.outputStream().buffered().use { out ->
-                        ModelIntegrity.copyVerified(input,out,SIZE,SHA,cancelled)
-                    } }
-                    java.nio.file.Files.move(tmp.toPath(),destination.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING,java.nio.file.StandardCopyOption.ATOMIC_MOVE)
-                    verifiedPath=destination.absolutePath
-                    marker.writeText(SHA);completed=true;break
-                } finally { c.disconnect() }
-            }
-            check(completed) { "모델 다운로드 연결을 확인하지 못했습니다." }
+            context.assets.open(NAME).use { input -> tmp.outputStream().buffered().use { out ->
+                ModelIntegrity.copyVerified(input,out,SIZE,SHA,cancelled)
+            } }
+            java.nio.file.Files.move(tmp.toPath(),destination.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING,java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+            marker.writeText(SHA);verifiedPath=destination.absolutePath
             return destination
         } catch(e:Exception) { tmp.delete();throw e }
     }

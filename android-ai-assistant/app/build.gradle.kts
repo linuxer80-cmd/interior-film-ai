@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -48,3 +49,18 @@ dependencies {
 }
 
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
+
+// Refuse to package release artifacts if the bundled offline model is missing or changed.
+val verifyBundledVoiceModel by tasks.registering {
+    val model = layout.projectDirectory.file("src/main/assets/ggml-small-q5_1.bin")
+    inputs.file(model)
+    doLast {
+        val digest = MessageDigest.getInstance("SHA-256")
+        model.asFile.inputStream().buffered().use { stream ->
+            val buffer = ByteArray(65536)
+            while (true) { val n = stream.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+        }
+        check(digest.digest().joinToString("") { "%02x".format(it) } == "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb") { "Bundled speech model checksum mismatch" }
+    }
+}
+tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { dependsOn(verifyBundledVoiceModel) }
