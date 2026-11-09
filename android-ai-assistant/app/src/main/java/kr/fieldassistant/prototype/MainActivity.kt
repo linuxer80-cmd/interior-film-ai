@@ -575,7 +575,7 @@ class MainActivity : Activity() {
                         updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
                     } catch(e:CancellationException) { throw e }
                       catch(_: Exception) {
-                        if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일에 접근할 수 있는지와 휴대폰 저장 공간을 확인한 뒤 다시 분석해 주세요.")
+                        if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 저장 공간을 확인해 주세요. 첫 분석에는 인터넷으로 음성 모델을 받아야 합니다. 연결을 확인한 뒤 다시 시도해 주세요.")
                     } finally {
                         if(locked) BackgroundCalls.running.set(false)
                         if(epoch==sessionEpoch) { offlineQueue.remove(current);offlineQueued.remove(current) }

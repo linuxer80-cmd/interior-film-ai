@@ -160,7 +160,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     } catch(e: InterruptedException) { break
                     } catch(_: Exception) {
                         failed=true
-                        record.put("status","분석 실패").put("summary","휴대폰에서 이 녹음을 분석하지 못했습니다. 앱에서 다시 시도해 주세요.")
+                        record.put("status","분석 실패").put("summary","녹음 파일과 저장 공간을 확인해 주세요. 처음에는 인터넷으로 음성 모델을 받아야 합니다. 앱에서 다시 시도할 수 있습니다.")
                     }
                     finally { BackgroundCalls.running.set(false) }
                     synchronized(BackgroundCalls.lock) {
