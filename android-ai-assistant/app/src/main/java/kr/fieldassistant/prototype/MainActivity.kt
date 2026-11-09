@@ -874,7 +874,11 @@ class MainActivity : Activity() {
         val fields=listOf("site_name" to "현장명","customer_name" to "고객명","customer_phone" to "전화번호","address" to "주소","work_description" to "시공 내용","memo" to "상담 메모")
         val edits=fields.associate { (key,label) ->
             box.addView(text(label,13f,true))
-            key to EditText(this).apply { setText(draft.optString(key));setSingleLine(key!="memo");box.addView(this) }
+            key to EditText(this).apply {
+                setText(draft.optString(key));setSingleLine(key!="memo" && key!="work_description")
+                if(key=="work_description") hint="예: 도배 · 거실과 방 2개 벽·천장, 벽지 종류와 철거 여부"
+                box.addView(this)
+            }
         }
         val candidates=item.optJSONObject("analysis_candidates")
         val dates=EditText(this).apply { hint="시공 날짜: 2026/11/7, 2026/11/8";setText((draft.optJSONArray("work_dates") ?: JSONArray()).let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } });box.addView(this) }

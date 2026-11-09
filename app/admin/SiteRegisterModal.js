@@ -599,10 +599,17 @@ export default function SiteRegisterModal({
 
               {inputs([["work_type", "시공 종류"]])}
 
+              <button type="button" disabled={blocked || !!saved} onClick={() => {
+                if (!form.work_type.trim()) field("work_type", "도배");
+                else if (!form.work_type.includes("도배")) field("work_type", `${form.work_type.trim()} · 도배`);
+              }}>도배 작업 추가</button>
+              {form.work_type.includes("도배") && <p>도배 범위, 벽·천장, 벽지 종류와 철거 여부를 아래에 기록해 주세요. 벽지는 필름 자재에 등록하지 않아도 됩니다.</p>}
+
               <label>
                 상세 작업내용
                 <textarea
                   rows={3}
+                  placeholder={form.work_type.includes("도배") ? "예: 거실·방 2개 벽과 천장, 거실 실크·방 합지, 기존 벽지 제거 여부 확인" : "작업 범위와 시공 내용을 입력해 주세요"}
                   value={form.work_description}
                   onChange={(event) =>
                     field("work_description", event.target.value)
