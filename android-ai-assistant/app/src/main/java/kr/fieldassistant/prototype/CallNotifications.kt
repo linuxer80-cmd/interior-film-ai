@@ -34,7 +34,9 @@ internal object CallNotifications {
                 ?: BackgroundCalls.resultPrefs(ctx,uid).getString("record_"+BackgroundCalls.key(id),null)?.let { JSONObject(it) }
         } catch(_:Exception) { null }
         val draft=record?.optJSONObject("chat_draft")
+        val recognizedWork=record?.optString("transcript")?.let { CallDraftHints.work(it) }.orEmpty()
         val detail=listOf("site_name","customer_name","work_description").mapNotNull { key -> draft?.optString(key)?.takeIf { it.isNotBlank() && it!="null" } }.joinToString(" · ").take(140)
+            .ifBlank { recognizedWork.takeIf { it.isNotBlank() }?.let { "인식된 부위: $it (확인 필요)" }.orEmpty() }
             .ifBlank { record?.optString("name")?.take(100).orEmpty() }
         val body=listOf(detail,"현장에 등록할까요?").filter { it.isNotBlank() }.joinToString("\n")
         NotificationInbox.record(ctx,uid,"call-$id","call","견적 문의로 보이는 전화가 왔습니다",body,yes,null,id.hashCode() and Int.MAX_VALUE)

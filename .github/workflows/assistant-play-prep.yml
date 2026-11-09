@@ -1,7 +1,7 @@
 name: Prepare Android 16 Play build
 on:
   push:
-    branches: [codex/assistant-play-prep, codex/android-https-security-20261105, codex/assistant-find-saved-site-20261105, codex/assistant-natural-language-20261105, codex/construction-ai-20261105, codex/assistant-photo-search-call-filter-20261105, codex/assistant-ui-20261106, codex/assistant-design-20261106]
+    branches: [codex/assistant-play-prep, codex/android-https-security-20261105, codex/assistant-find-saved-site-20261105, codex/assistant-natural-language-20261105, codex/construction-ai-20261105, codex/assistant-photo-search-call-filter-20261105, codex/assistant-ui-20261106, codex/assistant-design-20261106, codex/call-draft-clarity-20261109]
 permissions:
   contents: read
 jobs:

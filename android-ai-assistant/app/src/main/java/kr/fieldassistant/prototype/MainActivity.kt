@@ -573,6 +573,7 @@ class MainActivity : Activity() {
                         if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
                         val label=if(InquiryMatcher.likely(result.text)) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
                         updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
+                        if(InquiryMatcher.likely(result.text)) postCompletionNotification(current)
                     } catch(e:CancellationException) { throw e }
                       catch(_: Exception) {
                         if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 휴대폰 저장 공간을 확인한 뒤 다시 시도해 주세요.")
@@ -5189,17 +5190,17 @@ class MainActivity : Activity() {
             val item=list.optJSONObject(i) ?: continue;val id=item.optString("id");val status=item.optString("status")
             val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(15),dp(14),dp(15),dp(14));background=bg(Color.WHITE,16,Color.rgb(230,232,222)) }
             val p=LinearLayout.LayoutParams(-1,-2);p.setMargins(0,0,0,dp(10));col.addView(card,p)
-            card.addView(text(item.optString("name","통화 녹음"),14f,true));card.addView(text(status,12f,false,Color.rgb(88,126,94)))
+            card.addView(text(item.optString("name","통화 녹음"),14f,true));card.addView(text(CallProgress.label(status,id in offlineQueued,id in inFlight),12f,true,Color.rgb(88,126,94)))
             if(status=="휴대폰에서 분석 중" && (id in offlineQueued || id in inFlight)) {
                 card.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true; contentDescription="녹음 분석 중" },LinearLayout.LayoutParams(-1,dp(6)))
             }
-            if(status=="분석 대기" && id !in offlineQueued) card.addView(text("현재 실행 중인 분석이 아닙니다. 다시 분석을 눌러 시작해 주세요.",13f))
+            if(status=="분석 대기" && id !in offlineQueued) card.addView(text("현재 분석이 시작되지 않았습니다. 아래 버튼을 눌러 다시 시도해 주세요.",13f))
             val summary=item.optString("summary"); if(summary.isNotBlank()) card.addView(text(summary,13f))
             if(id.startsWith("content:") && selectedCompany()?.role=="관리자") addButton(card,"서버 AI로 통화 분석",false) {
                 val company=selectedCompany()
                 if(company?.role=="관리자") confirmCloudRecording(Uri.parse(id),company)
             }
-            if(status=="분석 대기"||status=="분석 실패") addButton(card,"다시 분석",false) { retryOffline(id) }
+            if((status=="분석 대기" && id !in offlineQueued)||status=="분석 실패") addButton(card,"다시 분석",false) { retryOffline(id) }
             if(status=="현장 등록 완료") addButton(card,"상담 대화 보기",false) { showRegistrationConfirmation(id) }
             if(status=="확인 필요") {
                 addButton(card,if(id in savingRegistrations) "현장 등록 확인 중…" else "비서와 대화 · 현장 등록",true) { showRegistrationConfirmation(id) }
