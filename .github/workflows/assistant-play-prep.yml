@@ -24,9 +24,6 @@ jobs:
           mkdir -p android-ai-assistant/vendor android-ai-assistant/app/src/main/assets
           git clone --depth 1 --branch v1.7.6 https://github.com/ggml-org/whisper.cpp.git android-ai-assistant/vendor/whisper
           test "$(git -C android-ai-assistant/vendor/whisper rev-parse HEAD)" = a8d002cfd879315632a579e73f0148d06959de36
-          curl -fsSL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin -o android-ai-assistant/app/src/main/assets/ggml-small-q5_1.bin
-          cd android-ai-assistant/app/src/main/assets
-          sha256sum ggml-small-q5_1.bin > whisper-model.sha256
       - name: Prepare untrusted local TLS test certificate
         run: |
           set -euo pipefail

@@ -140,7 +140,15 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     try {
                         count++
                         if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"새 녹음을 휴대폰에서 분석하고 있습니다.")
-                        val result=Model(OfflineModel.ensure(ctx).absolutePath).use { model ->
+                        try {
+                            val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                            AssistantNotificationChannels.ensure(manager,"assistant_processing","음성 분석 진행",NotificationManager.IMPORTANCE_LOW)
+                            val notification=Notification.Builder(ctx,"assistant_processing").setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                                .setContentTitle("통화 녹음 분석 중").setContentText("휴대폰에서 녹음 내용을 확인하고 있습니다.").setOngoing(true).build()
+                            val type=if(Build.VERSION.SDK_INT>=35) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING else android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                            setForegroundAsync(ForegroundInfo(3189,notification,type)).get()
+                        } catch(_:Exception) { BackgroundCalls.status(ctx,uid,"백그라운드 분석이 제한될 수 있습니다. 앱을 열어 확인해 주세요.") }
+                        val result=Model(OfflineModel.ensure(ctx) { isStopped || !BackgroundCalls.active(ctx,uid,token) }.absolutePath).use { model ->
                             OfflineAudio.transcribe(ctx,file.uri,model) { isStopped || !BackgroundCalls.active(ctx,uid,token) }
                         }
                         if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")

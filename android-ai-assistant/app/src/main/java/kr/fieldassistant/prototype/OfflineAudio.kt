@@ -49,26 +49,54 @@ internal object InquiryMatcher {
 }
 
 internal object OfflineModel {
-    @Synchronized fun ensure(context: Context): File {
-        val name="ggml-small-q5_1.bin"
-        val destination=File(context.filesDir,name)
-        val expected=context.assets.open("whisper-model.sha256").bufferedReader().use { it.readText().trim().split(" ").first() }
+    private const val NAME="ggml-small-q5_1.bin"
+    private const val SIZE=190085487L
+    private const val SHA="ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb"
+    private const val SOURCE="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"
+    private val HOSTS=setOf("huggingface.co","cdn-lfs.huggingface.co","cdn-lfs-us-1.hf.co","cas-bridge.xethub.hf.co","transfer.xethub.hf.co","us.aws.cdn.hf.co")
+    @Synchronized fun ensure(context:Context,cancelled:()->Boolean={false}):File {
+        val destination=File(context.filesDir,NAME)
         val marker=File(context.filesDir,"whisper-small-q5.complete")
-        if(destination.isFile && marker.isFile && marker.readText()==expected && destination.length()>100_000_000L) return destination
-        val tmp=File(context.filesDir,"$name.tmp")
+        if(destination.isFile && destination.length()==SIZE && marker.isFile && marker.readText()==SHA) return destination
+        val tmp=File(context.filesDir,"$NAME.tmp")
         try {
-            val digest=MessageDigest.getInstance("SHA-256")
-            context.assets.open(name).use { input -> tmp.outputStream().buffered().use { out ->
-                val block=ByteArray(65536)
-                while(true) { val n=input.read(block);if(n<0)break;out.write(block,0,n);digest.update(block,0,n) }
-            } }
-            val actual=digest.digest().joinToString("") { "%02x".format(it) }
-            check(actual==expected) { "음성 모델 파일 검증에 실패했습니다." }
-            if(destination.exists()) check(destination.delete())
-            check(tmp.renameTo(destination))
-            marker.writeText(expected)
+            check(context.filesDir.usableSpace>SIZE+16_000_000L) { "음성 모델을 준비할 저장 공간이 부족합니다." }
+            var url=java.net.URI(SOURCE)
+            var completed=false
+            for(attempt in 0..5) {
+                if(cancelled()) throw InterruptedException("모델 준비가 중단되었습니다.")
+                check(url.scheme=="https" && url.userInfo==null && url.port in listOf(-1,443) && url.host in HOSTS) { "모델 다운로드 주소를 확인할 수 없습니다." }
+                val c=SecureTransport.open(url.toString())
+                try {
+                    c.readTimeout=60000
+                    val code=c.responseCode
+                    if(code in listOf(301,302,303,307,308)) {
+                        val next=c.getHeaderField("Location") ?: error("모델 다운로드 주소가 없습니다.")
+                        url=url.resolve(next);continue
+                    }
+                    check(code==200) { "음성 모델 다운로드에 실패했습니다. 네트워크를 확인해 주세요." }
+                    val reported=c.contentLengthLong
+                    check(reported<0 || reported==SIZE) { "음성 모델 크기가 올바르지 않습니다." }
+                    val digest=MessageDigest.getInstance("SHA-256");var size=0L
+                    c.inputStream.use { input -> tmp.outputStream().buffered().use { out ->
+                        val block=ByteArray(65536)
+                        while(true) {
+                            if(cancelled()) throw InterruptedException("모델 준비가 중단되었습니다.")
+                            val n=input.read(block);if(n<0)break
+                            size+=n;check(size<=SIZE) { "음성 모델 크기가 올바르지 않습니다." }
+                            digest.update(block,0,n);out.write(block,0,n)
+                        }
+                    } }
+                    val actual=digest.digest().joinToString("") { "%02x".format(it) }
+                    check(size==SIZE && actual==SHA) { "음성 모델 파일 검증에 실패했습니다." }
+                    if(destination.exists()) check(destination.delete())
+                    check(tmp.renameTo(destination)) { "음성 모델을 저장하지 못했습니다." }
+                    marker.writeText(SHA);completed=true;break
+                } finally { c.disconnect() }
+            }
+            check(completed) { "모델 다운로드 연결을 확인하지 못했습니다." }
             return destination
-        } catch(e: Exception) { tmp.delete();throw e }
+        } catch(e:Exception) { tmp.delete();throw e }
     }
 }
 

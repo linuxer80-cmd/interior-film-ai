@@ -565,7 +565,7 @@ class MainActivity : Activity() {
                         updateRecord(current,"휴대폰에서 분석 중",summary="통화 내용을 글자로 바꾸고 있습니다. 녹음 길이와 휴대폰 성능에 따라 시간이 걸릴 수 있습니다.")
                         val job=coroutineContext[Job]
                         val result=withContext(Dispatchers.IO) {
-                            WhisperModel(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
+                            WhisperModel(OfflineModel.ensure(applicationContext) { job?.isActive!=true }.absolutePath).use { model ->
                                 OfflineAudio.transcribe(applicationContext,Uri.parse(current),model) { job?.isActive!=true }
                             }
                         }
@@ -2467,7 +2467,7 @@ class MainActivity : Activity() {
             try {
                 val job=coroutineContext[Job]
                 val result=withContext(Dispatchers.IO) {
-                    WhisperModel(OfflineModel.ensure(applicationContext).absolutePath).use { model ->
+                    WhisperModel(OfflineModel.ensure(applicationContext) { job?.isActive!=true }.absolutePath).use { model ->
                         OfflineAudio.transcribe(applicationContext,uri,model) { job?.isActive!=true }
                     }
                 }
@@ -5085,7 +5085,7 @@ class MainActivity : Activity() {
     private fun startSimpleSetup() {
         if(setupBusy || baselineBusy) { message("준비 중입니다. 잠시 기다려 주세요.");return }
         AlertDialog.Builder(this).setTitle("비서 간편 설정")
-            .setMessage("통화 자동 분석을 사용할 때만 설정하면 됩니다. 직접 현장 등록·완료보고는 이 설정 없이 이용할 수 있습니다.\n\n통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 앱에 포함되어 있으며 첫 녹음 확인 시 준비합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
+            .setMessage("통화 자동 분석을 사용할 때만 설정하면 됩니다. 직접 현장 등록·완료보고는 이 설정 없이 이용할 수 있습니다.\n\n통화 녹음 폴더와 알림을 연결합니다. 기본 음성 모델은 첫 녹음 확인 시 약 190MB를 다운로드하고 이후 재사용합니다. Wi-Fi 연결을 권장합니다. 폴더와 알림 권한은 휴대폰에서 직접 허용해 주세요.")
             .setNegativeButton("나중에",null).setPositiveButton("시작") { _,_ ->
                 simpleSetup=true
                 if(folder()==null) openFolderPicker() else continueSimpleSetup()
@@ -5098,7 +5098,7 @@ class MainActivity : Activity() {
             folderStatus="폴더가 연결됐습니다. 알림을 허용해 주세요."
             render();configureNotifications()
         } else {
-            folderStatus="폴더와 알림이 연결됐습니다. 첫 새 녹음에서 기본 음성 모델을 준비합니다."
+            folderStatus="폴더와 알림이 연결됐습니다. 첫 새 녹음에서 음성 모델 약 190MB를 다운로드합니다."
             render();scanFolder()
         }
     }
