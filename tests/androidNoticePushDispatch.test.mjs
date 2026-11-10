@@ -36,6 +36,8 @@ test('recipient authorization is based on the stored notice, not the caller',asy
 test('only known site references with valid identifiers produce an app site destination',()=>{
  const row={company_id:U1,reference_id:U2,reference_type:'site_schedule'};
  assert.deepEqual(siteTargetForNotice(row),{companyId:U1,siteId:U2});
+ assert.deepEqual(siteTargetForNotice({...row,type:'customer_request_photos'}),{companyId:U1,siteId:U2,action:'request_photos'});
+ assert.deepEqual(siteTargetForNotice({...row,type:'worker_report_submitted'}),{companyId:U1,siteId:U2,action:'report'});
  assert.equal(siteTargetForNotice({...row,reference_type:'url'}),null);
  assert.equal(siteTargetForNotice({...row,reference_id:'invalid'}),null);
  assert.equal(siteTargetForNotice({...row,company_id:null}),null);
