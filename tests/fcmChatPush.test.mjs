@@ -55,6 +55,8 @@ test('general site notifications carry only validated opaque routing identifiers
  const payload=noticePushPayload(data).message.data;
  assert.equal(payload.company_id,meta.companyId);assert.equal(payload.site_id,meta.targetId);
  assert.equal('url' in payload,false);
+ assert.equal(noticePushPayload({...data,siteTarget:{...data.siteTarget,action:'request_photos'}}).message.data.site_action,'request_photos');
+ assert.equal(noticePushPayload({...data,siteTarget:{...data.siteTarget,action:'delete'}}).message.data.site_action,undefined);
  assert.throws(()=>noticePushPayload({...data,siteTarget:{companyId:'invalid',siteId:meta.targetId}}));
  assert.throws(()=>noticePushPayload({...data,siteTarget:{companyId:meta.companyId}}));
 });
