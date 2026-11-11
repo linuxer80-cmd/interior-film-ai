@@ -1107,18 +1107,29 @@ class MainActivity : Activity() {
         }.setNegativeButton("닫기",null).show()
     }
     private fun chatHeader(page: LinearLayout) {
-        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.rgb(29,67,50),16) }
-        val menu=TextView(this).apply { text="☰";textSize=24f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
+        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.WHITE,18,Color.rgb(226,232,225)) }
+        val menu=TextView(this).apply { text="☰";textSize=22f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
-        bar.addView(text("현장 AI 비서",19f,true,Color.WHITE),LinearLayout.LayoutParams(0,-2,1f))
-        val web=TextView(this).apply { text="업무";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="앱 안에서 업무 처리";setOnClickListener { showFeatures() } }
-        val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
+        bar.addView(text("필름장이 비서",17f,true,Color.rgb(31,57,43)),LinearLayout.LayoutParams(0,-2,1f))
+        val web=TextView(this).apply { text="업무";textSize=13f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="앱 안에서 업무 처리";setOnClickListener { showFeatures() } }
+        val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
         inboxBadge=inbox
         bar.addView(inbox,LinearLayout.LayoutParams(dp(58),dp(52)))
         bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
-        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
+        val home=TextView(this).apply { text="＋";textSize=25f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="추가 메뉴 열기";setOnClickListener { showAddMenu() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
         page.addView(bar)
+    }
+    private fun showAddMenu() {
+        val owner=selectedCompany()?.role=="관리자"
+        val labels=if(owner) arrayOf("새 현장 등록", "통화·상담 목록", "비서 홈") else arrayOf("현장 찾기", "통화·상담 목록", "비서 홈")
+        AlertDialog.Builder(this).setTitle("무엇을 할까요?").setItems(labels) { _,which ->
+            when(which) {
+                0 -> if(owner) showNewSiteRegistration() else lookupSites(AssistantRequests.Request("sites"))
+                1 -> showConversationList()
+                2 -> { chatId=null;settingsOpen=false;visibleConversationKey=null;render() }
+            }
+        }.setNegativeButton("닫기",null).show()
     }
     private fun showAssistantMenu() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
@@ -4533,7 +4544,19 @@ class MainActivity : Activity() {
                 if(latest!=null) showRegistrationConfirmation(latest.optString("id"))
                 else { appendHomeMessage("지금 확인할 새 상담은 없습니다. 새 상담이 들어오면 알려드리겠습니다.");render() }
             }
-            else -> { appendHomeMessage("‘이번 주 현장 알려줘’, ‘다음 주는?’, ‘청라 현장 찾아줘’, ‘1번 현장 상세’처럼 요청해 주세요. 견적·재고·입금 등의 작업은 ‘전체 기능’에서 기존 업무 화면으로 연결할 수 있습니다.");render() }
+            else -> {
+                val suggestions=AssistantRequests.suggestions(input,selectedCompany()?.role=="관리자")
+                if(suggestions.isEmpty()) {
+                    appendHomeMessage("원하시는 기능을 정확히 찾지 못했어요. 예를 들어 ‘오늘 현장 보여줘’ 또는 ‘미수금 확인’이라고 말씀해 주세요.");render()
+                } else {
+                    appendHomeMessage("말씀하신 내용을 정확히 이해하지 못했어요. 원하시는 기능을 선택해 주세요.");render()
+                    AlertDialog.Builder(this).setTitle("이 기능을 찾으시나요?")
+                        .setItems(suggestions.map { it.title }.toTypedArray()) { _, index ->
+                            val selected=AssistantRequests.feature(suggestions[index].id,selectedCompany()?.role=="관리자")
+                            if(selected!=null) openFeature(selected) else message("현재 계정에서 사용할 수 없는 기능입니다.")
+                        }.setNegativeButton("다시 입력",null).show()
+                }
+            }
         }
     }
     private var homeScrollPosition=0
@@ -4566,7 +4589,7 @@ class MainActivity : Activity() {
             item.addView(image,LinearLayout.LayoutParams(dp(22),dp(22)))
             item.addView(text(label,12f,true,Color.rgb(35,65,48)).apply { gravity=Gravity.CENTER;setPadding(0,dp(6),0,0) })
             item.setOnClickListener { action() }
-            quickRow.addView(item,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(10),dp(3),dp(4)) });item.minimumHeight=dp(76)
+            quickRow.addView(item,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(10),dp(3),dp(4)) });item.minimumHeight=dp(68)
         }
         quick(if(isOwner) "현장 등록" else "현장 찾기",android.R.drawable.ic_menu_add) {
             if(isOwner) openNativeFeature("new-site") else lookupSites(AssistantRequests.Request("sites"))

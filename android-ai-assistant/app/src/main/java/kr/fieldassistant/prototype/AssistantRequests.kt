@@ -154,6 +154,30 @@ internal object AssistantRequests {
         }
         return Request("unknown")
     }
+    /** Suggest navigation only. Never infer permission to execute a change. */
+    fun suggestions(input:String, owner:Boolean):List<Feature> {
+        val query=NaturalLanguage.normalize(input).replace(Regex("[^가-힣a-zA-Z0-9]"), "").lowercase()
+        if(query.length<2) return emptyList()
+        val aliases=mapOf(
+            "new-site" to "현장등록새현장상담전화", "sites" to "현장목록현장관리",
+            "work" to "내현장배정현장", "quotes" to "견적서견적금액", "payment" to "입금등록수금",
+            "receivables" to "미수금잔금입금", "profit" to "매출수익이익",
+            "inventory" to "필름재고입고반출반입", "worker-stock" to "자재반출반납",
+            "expenses" to "경비주차식비", "report" to "완료보고작업보고", "film-use" to "필름사용반납",
+            "samples" to "필름샘플색상제품", "customer-chat" to "고객채팅메시지",
+            "customer-page" to "고객페이지공유", "clients" to "거래처업체", "workers" to "시공자직원",
+            "assignment" to "일정배정시공자", "attendance" to "출근퇴근근태", "cutting" to "재단재단표",
+            "jobs" to "구인구직일자리", "follow-ups" to "상담고객연락후속"
+        )
+        val words=(query.windowed(2).toSet())
+        return aliases.mapNotNull { (id,terms) ->
+            val f=feature(id,owner) ?: return@mapNotNull null
+            val score=words.intersect(terms.windowed(2).toSet()).size
+            if(score==0) null else f to score
+        }.groupBy { it.first.id }.map { it.value.maxBy { item -> item.second } }
+            .sortedWith(compareByDescending<Pair<Feature,Int>> { it.second }.thenBy { it.first.title })
+            .take(3).map { it.first }
+    }
     fun feature(id:String,owner:Boolean):Feature? {
         val actual=if(!owner && id=="inventory") "worker-stock" else if(!owner && id=="sites") "work" else id
         return features.find { it.id==actual && (owner || !it.ownerOnly) }

@@ -1,0 +1,50 @@
+name: Assistant combined APK build
+on:
+  pull_request:
+    paths: [android-ai-assistant/**, .github/workflows/assistant-combined-build.yml]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: '8.13'
+      - name: Prepare Android platform and test-only Firebase configuration
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36'
+          cat > android-ai-assistant/app/google-services.json <<'JSON'
+          {"project_info":{"project_number":"123456789012","project_id":"field-assistant-test-only"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789012:android:0123456789abcdef","android_client_info":{"package_name":"kr.fieldassistant.prototype.stable"}},"api_key":[{"current_key":"test-build-only-not-a-real-api-key"}]}],"configuration_version":"1"}
+          JSON
+      - name: Prepare native speech engine and model
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1"
+          mkdir -p android-ai-assistant/vendor android-ai-assistant/app/src/main/assets
+          git clone --depth 1 --branch v1.7.6 https://github.com/ggml-org/whisper.cpp.git android-ai-assistant/vendor/whisper
+          test "$(git -C android-ai-assistant/vendor/whisper rev-parse HEAD)" = a8d002cfd879315632a579e73f0148d06959de36
+          curl -fsSL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin -o android-ai-assistant/app/src/main/assets/ggml-small-q5_1.bin
+          cd android-ai-assistant/app/src/main/assets
+          echo "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb  ggml-small-q5_1.bin" | sha256sum -c
+          sha256sum ggml-small-q5_1.bin > whisper-model.sha256
+      - name: Compile, test and build debug APK
+        working-directory: android-ai-assistant
+        run: gradle --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: material-workflow-test-results
+          path: android-ai-assistant/app/build/test-results/testDebugUnitTest
+          retention-days: 3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: assistant-combined-debug-apk
+          path: android-ai-assistant/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

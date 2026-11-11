@@ -62,7 +62,7 @@ internal object BackgroundCalls {
             WorkManager.getInstance(ctx).enqueueUniqueWork(RETRY,ExistingWorkPolicy.APPEND_OR_REPLACE,
                 OneTimeWorkRequestBuilder<BackgroundCallWorker>()
                     .setInputData(workDataOf("user" to uid,"generation" to token,"retry" to true))
-                    .setInitialDelay(20,TimeUnit.SECONDS).build())
+                    .setInitialDelay(10,TimeUnit.SECONDS).build())
         } catch(e: Exception) { retryPending.set(false);throw e }
     }
     fun retryStarted() { retryPending.set(false) }
@@ -73,7 +73,7 @@ internal object BackgroundCalls {
         if(!active(ctx,uid)) return
         val token=generation(ctx) ?: return
         val constraints=Constraints.Builder().addContentUriTrigger(tree,true)
-            .setTriggerContentUpdateDelay(10,TimeUnit.SECONDS).setTriggerContentMaxDelay(30,TimeUnit.SECONDS).build()
+            .setTriggerContentUpdateDelay(3,TimeUnit.SECONDS).setTriggerContentMaxDelay(10,TimeUnit.SECONDS).build()
         val request=OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token,true)).setConstraints(constraints).build()
         WorkManager.getInstance(ctx).enqueueUniqueWork(WATCH,if(append) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,request)
     }
@@ -125,10 +125,21 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             run {
                 for(file in files) {
                     if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
-                    val id=file.uri.toString();if(id in existing || id in processed || file.size<=0) continue
+                    val id=file.uri.toString();if(id in existing || id in processed) continue
                     val key=BackgroundCalls.key(id);val now=System.currentTimeMillis();val size=file.size;val modified=file.modified
+                    // Some providers expose the file before any bytes have been written.
+                    // Retry a bounded number of times instead of silently missing it.
+                    if(size<=0) {
+                        val attempts=background.getInt("empty_$key",0)
+                        if(attempts<6) {
+                            background.edit().putInt("empty_$key",attempts+1).apply()
+                            needsRetry=true
+                        }
+                        continue
+                    }
+                    background.edit().remove("empty_$key").apply()
                     val oldSize=background.getLong("size_$key",-1);val first=background.getLong("time_$key",0)
-                    if((modified>0 && now-modified in 0..14999) || oldSize!=size || first==0L || now-first<15000) {
+                    if((modified>0 && now-modified in 0..9999) || oldSize!=size || first==0L || now-first<10000) {
                         background.edit().putLong("size_$key",size).putLong("time_$key",if(oldSize==size && first>0) first else now).apply()
                         needsRetry=true;continue
                     }
