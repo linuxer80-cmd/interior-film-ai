@@ -1098,12 +1098,30 @@ class MainActivity : Activity() {
     }
     private fun showConversationList() {
         val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
-        if(entries.isEmpty()) { message("아직 상담 대화가 없습니다.");return }
-        AlertDialog.Builder(this).setTitle("상담 대화").setItems(entries.map { it.optString("name")+" · "+it.optString("status") }.toTypedArray()) { _,index ->
-            val item=entries[index]
+        if(entries.isEmpty()) { message("아직 통화 기록이 없습니다.");return }
+        fun category(item:JSONObject):String = when {
+            item.optString("site_id").isNotBlank() || item.optString("status")=="현장 등록 완료" -> "등록 완료"
+            consultationDisposition(item)!="active" -> "보류 · 등록 안 함"
+            item.optString("status")=="확인 필요" -> "확인 필요"
+            else -> "분석 중 · 재확인"
+        }
+        val groups=listOf("전체","확인 필요","등록 완료","보류 · 등록 안 함","분석 중 · 재확인")
+        AlertDialog.Builder(this).setTitle("통화 관리").setItems(groups.map { group ->
+            "$group (${if(group=="전체") entries.size else entries.count { category(it)==group }})"
+        }.toTypedArray()) { _,which ->
+            val filtered=entries.filter { which==0 || category(it)==groups[which] }
+            if(filtered.isEmpty()) { message("해당하는 통화가 없습니다.");return@setItems }
+            AlertDialog.Builder(this).setTitle(groups[which]).setItems(filtered.map {
+                val draft=it.optJSONObject("chat_draft")
+                val title=draft?.optString("customer_name")?.takeIf { value -> value.isNotBlank() && value!="null" } ?: it.optString("name","통화 녹음")
+                val summary=it.optString("summary").replace('\n',' ').take(70)
+                "$title · ${category(it)}${if(summary.isNotBlank()) "\n$summary" else ""}"
+            }.toTypedArray()) { _,index ->
+            val item=filtered[index]
             if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
                 settingsOpen=false;showRegistrationConfirmation(item.optString("id"))
             } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
+            }.setNegativeButton("닫기",null).show()
         }.setNegativeButton("닫기",null).show()
     }
     private fun chatHeader(page: LinearLayout) {
