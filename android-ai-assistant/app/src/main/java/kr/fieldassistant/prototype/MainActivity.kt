@@ -254,10 +254,10 @@ class MainActivity : Activity() {
     private fun attachResults(uid: String) {
         detachResults();listenerUser=uid
         val listener=SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
-            if(key?.startsWith("record_")==true || key=="scan_status" || key?.startsWith(CallNotifications.DECLINED_PREFIX)==true) handler.post {
+            if(key?.startsWith("record_")==true || key=="scan_status" || key?.startsWith(CallNotifications.DECLINED_PREFIX)==true || key?.startsWith(CallNotifications.DEFERRED_PREFIX)==true) handler.post {
                 if(account?.userId==uid) {
                     mergeResults(uid)
-                    if(key?.startsWith(CallNotifications.DECLINED_PREFIX)==true && chatId?.let { CallNotifications.declinedKey(it)==key }==true) { render();return@post }
+                    if(chatId?.let { CallNotifications.declinedKey(it)==key || CallNotifications.deferredKey(it)==key }==true) { visibleConversationKey=null;render();return@post }
                     // Folder polling is not a conversation change. Keep its views and IME intact.
                     if(key!="scan_status" || settingsOpen) refreshBackgroundUi()
                     maybeReview()
@@ -688,6 +688,7 @@ class MainActivity : Activity() {
     }
     private fun consultationDisposition(item: JSONObject): String {
         if(prefs.getBoolean(CallNotifications.declinedKey(item.optString("id")),false)) return "declined"
+        if(prefs.getBoolean(CallNotifications.deferredKey(item.optString("id")),false)) return "deferred"
         val messages=item.optJSONArray("chat_messages") ?: JSONArray()
         val replies=(0 until messages.length()).mapNotNull { messages.optJSONObject(it) }
             .filter { it.optBoolean("user") }.map { it.optString("body") }
@@ -695,7 +696,7 @@ class MainActivity : Activity() {
     }
     private fun resumeConsultation(id: String) {
         if(!changeRecord(id) { it.put("chat_disposition","active") }) { message("변경을 저장하지 못했습니다.");return }
-        if(!prefs.edit().remove(CallNotifications.declinedKey(id)).commit()) { message("등록 검토를 다시 열지 못했습니다.");return }
+        if(!prefs.edit().remove(CallNotifications.declinedKey(id)).remove(CallNotifications.deferredKey(id)).commit()) { message("등록 검토를 다시 열지 못했습니다.");return }
         chatMessage(id,"등록 검토를 다시 시작합니다. 내용을 확인한 뒤 등록 여부를 알려 주세요.")
         render()
     }
