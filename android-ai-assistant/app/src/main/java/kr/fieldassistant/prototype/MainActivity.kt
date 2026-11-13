@@ -1100,6 +1100,28 @@ class MainActivity : Activity() {
             }
         } };dialog.show()
     }
+    private fun showFailedRecordings() {
+        val uid=account?.userId ?: return
+        val list=records()
+        val failed=CallListOrder.indicesNewestFirst((0 until list.length()).map { list.optJSONObject(it)?.optLong("recorded_at",0L) ?: 0L })
+            .mapNotNull { list.optJSONObject(it) }.filter { it.optString("status")=="분석 실패" && it.optString("site_id").isBlank() }
+        if(failed.isEmpty()) { message("다시 분석할 통화가 없습니다.");return }
+        AlertDialog.Builder(this).setTitle("분석 실패한 통화")
+            .setItems(failed.map { item ->
+                val timestamp=item.optLong("recorded_at",0L)
+                val time=if(timestamp>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(timestamp)) else "통화 시간 미확인"
+                item.optString("name","통화 녹음")+"\n"+time
+            }.toTypedArray()) { _,index ->
+                val item=failed[index];val id=item.optString("id")
+                AlertDialog.Builder(this).setTitle("다시 분석할까요?")
+                    .setMessage(item.optString("name","통화 녹음")+"\n\n"+item.optString("summary").ifBlank { "녹음 파일을 확인해 주세요." })
+                    .setNegativeButton("취소",null).setPositiveButton("다시 분석") { _,_ ->
+                        val current=recordById(id)
+                        if(account?.userId==uid && current?.optString("status")=="분석 실패" && current.optString("site_id").isBlank()) retryOffline(id)
+                        else message("통화 상태가 변경되었습니다. 목록을 다시 확인해 주세요.")
+                    }.show()
+            }.setNegativeButton("닫기",null).show()
+    }
     private fun showConversationList() {
         val items=records();val entries=CallListOrder.indicesNewestFirst((0 until items.length()).map { items.optJSONObject(it)?.optLong("recorded_at",0L) ?: 0L }).mapNotNull { items.optJSONObject(it) }
         if(entries.isEmpty()) { message("아직 통화 기록이 없습니다.");return }
@@ -4617,7 +4639,8 @@ class MainActivity : Activity() {
         val candidate=latestConsultation()
         val key=listOf("home",followUpItems().map { it.optString("id")+it.optJSONObject("follow_up").toString() },account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
             prefs.getString("selected_site_company",null),prefs.getString("selected_site_id",null),prefs.getString("selected_site_name",null),
-            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),account?.userId?.let { BackgroundCalls.resultPrefs(applicationContext,it).getString("scan_status","") },selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
+            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),account?.userId?.let { BackgroundCalls.resultPrefs(applicationContext,it).getString("scan_status","") },
+            records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" && list.optJSONObject(it)?.optString("site_id").orEmpty().isBlank() } },selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
         if(visibleConversationKey==key) {
             val stale=dailyState
             if(stale!=null && !stale.loading && !stale.error && System.currentTimeMillis()-stale.loadedAt>=300_000L)
@@ -4672,6 +4695,8 @@ class MainActivity : Activity() {
                 setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223));isClickable=true;isFocusable=true
                 setOnClickListener { settingsOpen=true;showSetupDetails=true;render() }
             },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+            val failed=records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" && list.optJSONObject(it)?.optString("site_id").orEmpty().isBlank() } }
+            if(failed>0) addButton(body,"분석 실패 ${failed}건 확인",false) { showFailedRecordings() }
         }
         if(company!=null && uid!=null) {
             val tasks=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
@@ -5278,6 +5303,7 @@ class MainActivity : Activity() {
         val lastScanText=if(lastScan>0) SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.KOREA).format(Date(lastScan)) else "확인 기록 없음"
         val lastError=scanPrefs.getString("last_scan_error","").orEmpty()
         col.addView(text("통화 감지 진단\n폴더 읽기 권한: ${if(folderPermission) "연결됨" else "확인 필요"}\n결과 알림: ${if(notificationsEnabled()) "켜짐" else "꺼짐"}\n마지막 폴더 확인: $lastScanText\n분석 실패: ${failedRecords}건${if(lastError.isNotBlank()) "\n$lastError" else ""}",13f,true))
+        if(failedRecords>0) addButton(col,"분석 실패한 통화 보기",false) { showFailedRecordings() }
         if(scanStatus.isNotBlank()) col.addView(text(scanStatus,12f,false,Color.rgb(76,111,85)))
         if(scanStatus=="새 녹음을 휴대폰에서 분석하고 있습니다." && BackgroundCalls.running.get()) {
             col.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true; contentDescription="새 녹음 분석 중" },LinearLayout.LayoutParams(-1,dp(6)))
