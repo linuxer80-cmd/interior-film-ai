@@ -259,7 +259,7 @@ class MainActivity : Activity() {
                     mergeResults(uid)
                     if(chatId?.let { CallNotifications.declinedKey(it)==key || CallNotifications.deferredKey(it)==key }==true) { visibleConversationKey=null;render();return@post }
                     // Folder polling is not a conversation change. Keep its views and IME intact.
-                    if(key!="scan_status" || settingsOpen) refreshBackgroundUi()
+                    refreshBackgroundUi()
                     maybeReview()
                 }
             }
@@ -1107,10 +1107,19 @@ class MainActivity : Activity() {
             else -> "분석 중 · 재확인"
         }
         val groups=listOf("전체","확인 필요","등록 완료","보류 · 등록 안 함","분석 중 · 재확인")
-        AlertDialog.Builder(this).setTitle("통화 관리").setItems(groups.map { group ->
-            "$group (${if(group=="전체") entries.size else entries.count { category(it)==group }})"
+        val search=EditText(this).apply { hint="고객명 또는 전화번호 검색";setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("통화 관리 · 검색").setView(search)
+            .setNegativeButton("닫기",null).setPositiveButton("상태 선택") { _,_ ->
+        val query=search.text.toString().trim()
+        val matches=entries.filter { item ->
+            val draft=item.optJSONObject("chat_draft")
+            listOf(item.optString("name"),draft?.optString("customer_name").orEmpty(),draft?.optString("customer_phone").orEmpty())
+                .any { it.contains(query,ignoreCase=true) || (query.any(Char::isDigit) && it.filter(Char::isDigit).contains(query.filter(Char::isDigit))) }
+        }
+        AlertDialog.Builder(this).setTitle("통화 상태 선택").setItems(groups.map { group ->
+            "$group (${if(group=="전체") matches.size else matches.count { category(it)==group }})"
         }.toTypedArray()) { _,which ->
-            val filtered=entries.filter { which==0 || category(it)==groups[which] }
+            val filtered=matches.filter { which==0 || category(it)==groups[which] }
             if(filtered.isEmpty()) { message("해당하는 통화가 없습니다.");return@setItems }
             AlertDialog.Builder(this).setTitle(groups[which]).setItems(filtered.map {
                 val draft=it.optJSONObject("chat_draft")
@@ -1124,6 +1133,7 @@ class MainActivity : Activity() {
             } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
             }.setNegativeButton("닫기",null).show()
         }.setNegativeButton("닫기",null).show()
+        }.show()
     }
     private fun chatHeader(page: LinearLayout) {
         val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.WHITE,18,Color.rgb(226,232,225)) }
@@ -4584,7 +4594,7 @@ class MainActivity : Activity() {
         val candidate=latestConsultation()
         val key=listOf("home",followUpItems().map { it.optString("id")+it.optJSONObject("follow_up").toString() },account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
             prefs.getString("selected_site_company",null),prefs.getString("selected_site_id",null),prefs.getString("selected_site_name",null),
-            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
+            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),account?.userId?.let { BackgroundCalls.resultPrefs(applicationContext,it).getString("scan_status","") },selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
         if(visibleConversationKey==key) {
             val stale=dailyState
             if(stale!=null && !stale.loading && !stale.error && System.currentTimeMillis()-stale.loadedAt>=300_000L)
@@ -4623,6 +4633,21 @@ class MainActivity : Activity() {
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val company=selectedCompany();val uid=account?.userId
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
+        if(uid!=null) {
+            val bgPrefs=BackgroundCalls.resultPrefs(applicationContext,uid)
+            val last=bgPrefs.getLong("last_check_at",0L)
+            val status=when {
+                folder()==null -> "녹음 폴더 연결 필요"
+                !notificationsEnabled() -> "알림 꺼짐"
+                BackgroundCalls.running.get() -> "녹음 분석 중"
+                else -> "녹음 폴더 연결됨"
+            }
+            val checked=if(last>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(last)) else "아직 확인 기록 없음"
+            body.addView(text("통화 확인 · $status\n최근 상태 갱신: $checked",13f,true,Color.rgb(49,92,72)).apply {
+                setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223));isClickable=true;isFocusable=true
+                setOnClickListener { settingsOpen=true;showSetupDetails=true;render() }
+            },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+        }
         if(company!=null && uid!=null) {
             val tasks=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
             tasks.addView(text("오늘 업무 브리핑",18f,true))

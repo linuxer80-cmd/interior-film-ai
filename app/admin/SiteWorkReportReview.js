@@ -1117,6 +1117,12 @@ export default function SiteWorkReportReview({
                   </div>
                 )}
 
+              <button type="button" onClick={() => onNavigate?.("settlement")} disabled={actionLoading || !onNavigate}
+                style={{marginTop:10,minHeight:44,padding:"10px 16px",border:"1px solid #86b99a",borderRadius:12,background:"#fff",color:"#166534",fontWeight:800}}>
+                검수금액 수정
+              </button>
+              <div style={{marginTop:4,fontSize:11}}>정산 화면에서 금액을 수정할 수 있습니다.</div>
+
               {data?.review?.memo && (
                 <div
                   style={{
