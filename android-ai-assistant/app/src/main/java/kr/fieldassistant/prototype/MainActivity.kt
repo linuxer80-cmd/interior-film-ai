@@ -1107,9 +1107,10 @@ class MainActivity : Activity() {
             item.optString("site_id").isNotBlank() || item.optString("status")=="현장 등록 완료" -> "등록 완료"
             consultationDisposition(item)!="active" -> "보류 · 등록 안 함"
             item.optString("status")=="확인 필요" -> "확인 필요"
+            item.optString("status")=="분석 실패" -> "분석 실패"
             else -> "분석 중 · 재확인"
         }
-        val groups=listOf("전체","확인 필요","등록 완료","보류 · 등록 안 함","분석 중 · 재확인")
+        val groups=listOf("전체","확인 필요","등록 완료","보류 · 등록 안 함","분석 실패","분석 중 · 재확인")
         val search=EditText(this).apply { hint="고객명 또는 전화번호 검색";setSingleLine(true) }
         AlertDialog.Builder(this).setTitle("통화 관리 · 검색").setView(search)
             .setNegativeButton("닫기",null).setPositiveButton("상태 선택") { _,_ ->
@@ -1131,7 +1132,15 @@ class MainActivity : Activity() {
                 "$title · ${category(it)}${if(summary.isNotBlank()) "\n$summary" else ""}"
             }.toTypedArray()) { _,index ->
             val item=filtered[index]
-            if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
+            if(item.optString("status")=="분석 실패" && item.optString("site_id").isBlank()) {
+                val id=item.optString("id");val uid=account?.userId
+                AlertDialog.Builder(this).setTitle("녹음 분석 실패")
+                    .setMessage(item.optString("name","통화 녹음")+"\n\n"+item.optString("summary").ifBlank { "녹음 파일을 확인해 주세요." }+"\n\n이 녹음을 휴대폰에서 다시 분석할까요?")
+                    .setNegativeButton("닫기",null).setPositiveButton("다시 분석") { _,_ ->
+                        if(uid!=null && account?.userId==uid && recordById(id)?.optString("status")=="분석 실패" && recordById(id)?.optString("site_id").orEmpty().isBlank()) retryOffline(id)
+                        else message("통화 상태가 변경되었습니다. 목록을 다시 확인해 주세요.")
+                    }.show()
+            } else if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
                 settingsOpen=false;showRegistrationConfirmation(item.optString("id"))
             } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
             }.setNegativeButton("닫기",null).show()
