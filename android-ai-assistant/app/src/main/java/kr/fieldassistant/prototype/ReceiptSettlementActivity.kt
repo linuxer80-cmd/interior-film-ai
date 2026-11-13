@@ -41,7 +41,7 @@ class ReceiptSettlementActivity:Activity() {
         super.onCreate(savedInstanceState)
         if(uid.isBlank()||company.isBlank()){finish();return}
         draft=runCatching { JSONObject(prefs.getString(key,"{}").orEmpty()) }.getOrDefault(JSONObject())
-        val root=LinearLayout(this).apply { orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener { v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED } }
+        val root=LinearLayout(this).apply { orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener { v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout() or android.view.WindowInsets.Type.ime());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED } }
         window.setDecorFitsSystemWindows(false)
         root.addView(ui.button("‹ 업무로").apply { setOnClickListener { if(!busy)finish() } })
         content=LinearLayout(this).apply { orientation=1;setPadding(ui.dp(18),ui.dp(12),ui.dp(18),ui.dp(24)) }
