@@ -22,7 +22,7 @@ class QuoteExportActivity:Activity(){
     private fun notice(s:String){if(valid())Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
     override fun onCreate(saved:Bundle?){
         super.onCreate(saved)
-        val root=LinearLayout(this).apply{orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener{v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED}}
+        val root=LinearLayout(this).apply{orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener{v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout() or android.view.WindowInsets.Type.ime());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED}}
         window.setDecorFitsSystemWindows(false)
         root.addView(ui.button("‹ 견적서").apply { setOnClickListener { finish() } },LinearLayout.LayoutParams(-1,-2).apply { setMargins(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(8)) })
         val heading=LinearLayout(this).apply { orientation=1;setPadding(ui.dp(20),0,ui.dp(20),0) };root.addView(heading)

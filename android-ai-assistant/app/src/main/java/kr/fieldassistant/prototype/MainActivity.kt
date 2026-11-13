@@ -82,7 +82,7 @@ class MainActivity : Activity() {
     private val inFlight = mutableSetOf<String>()
     private val savingRegistrations = mutableSetOf<String>()
     private var registrationDialog: AlertDialog? = null
-    private data class CallMatches(val uid:String,val company:String,val record:String,val phone:String,val loading:Boolean,val sites:List<JSONObject> = emptyList(),val failed:Boolean=false)
+    private data class CallMatches(val uid:String,val company:String,val record:String,val phone:String,val address:String,val loading:Boolean,val sites:List<JSONObject> = emptyList(),val addressSites:List<JSONObject> = emptyList(),val failed:Boolean=false)
     private var callMatches:CallMatches?=null
     private var resultListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var listenerUser: String? = null
@@ -254,12 +254,12 @@ class MainActivity : Activity() {
     private fun attachResults(uid: String) {
         detachResults();listenerUser=uid
         val listener=SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
-            if(key?.startsWith("record_")==true || key=="scan_status" || key?.startsWith(CallNotifications.DECLINED_PREFIX)==true) handler.post {
+            if(key?.startsWith("record_")==true || key=="scan_status" || key?.startsWith(CallNotifications.DECLINED_PREFIX)==true || key?.startsWith(CallNotifications.DEFERRED_PREFIX)==true) handler.post {
                 if(account?.userId==uid) {
                     mergeResults(uid)
-                    if(key?.startsWith(CallNotifications.DECLINED_PREFIX)==true && chatId?.let { CallNotifications.declinedKey(it)==key }==true) { render();return@post }
+                    if(chatId?.let { CallNotifications.declinedKey(it)==key || CallNotifications.deferredKey(it)==key }==true) { visibleConversationKey=null;render();return@post }
                     // Folder polling is not a conversation change. Keep its views and IME intact.
-                    if(key!="scan_status" || settingsOpen) refreshBackgroundUi()
+                    refreshBackgroundUi()
                     maybeReview()
                 }
             }
@@ -490,7 +490,7 @@ class MainActivity : Activity() {
                         val a=records();var found=false
                         if(recordById(id)?.optString("site_id").orEmpty().isNotBlank()) { message("이미 현장에 등록한 녹음입니다. 비서함을 확인해 주세요.");return@setPositiveButton }
                         for(i in 0 until a.length()) { val item=a.optJSONObject(i) ?: continue;if(item.optString("id")==id) { found=true;break } }
-                        if(!found) a.put(JSONObject().put("id",id).put("name",name).put("status","분석 대기"))
+                        if(!found) a.put(JSONObject().put("id",id).put("name",name).put("recorded_at",modified).put("status","분석 대기"))
                         val existing=seen();existing.add(id)
                         if(!prefs.edit().putString("records",a.toString()).putStringSet("seen",existing).commit()) {
                             message("분석을 시작하지 못했습니다. 다시 시도해 주세요.")
@@ -573,6 +573,7 @@ class MainActivity : Activity() {
                         if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
                         val label=if(InquiryMatcher.likely(result.text)) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
                         updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
+                        if(InquiryMatcher.likely(result.text) && recordById(current)?.let { consultationDisposition(it)=="active" }==true) postCompletionNotification(current)
                     } catch(e:CancellationException) { throw e }
                       catch(_: Exception) {
                         if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 휴대폰 저장 공간을 확인한 뒤 다시 시도해 주세요.")
@@ -688,6 +689,7 @@ class MainActivity : Activity() {
     }
     private fun consultationDisposition(item: JSONObject): String {
         if(prefs.getBoolean(CallNotifications.declinedKey(item.optString("id")),false)) return "declined"
+        if(prefs.getBoolean(CallNotifications.deferredKey(item.optString("id")),false)) return "deferred"
         val messages=item.optJSONArray("chat_messages") ?: JSONArray()
         val replies=(0 until messages.length()).mapNotNull { messages.optJSONObject(it) }
             .filter { it.optBoolean("user") }.map { it.optString("body") }
@@ -695,7 +697,7 @@ class MainActivity : Activity() {
     }
     private fun resumeConsultation(id: String) {
         if(!changeRecord(id) { it.put("chat_disposition","active") }) { message("변경을 저장하지 못했습니다.");return }
-        if(!prefs.edit().remove(CallNotifications.declinedKey(id)).commit()) { message("등록 검토를 다시 열지 못했습니다.");return }
+        if(!prefs.edit().remove(CallNotifications.declinedKey(id)).remove(CallNotifications.deferredKey(id)).commit()) { message("등록 검토를 다시 열지 못했습니다.");return }
         chatMessage(id,"등록 검토를 다시 시작합니다. 내용을 확인한 뒤 등록 여부를 알려 주세요.")
         render()
     }
@@ -755,27 +757,29 @@ class MainActivity : Activity() {
         val uid=account?.userId ?: return
         val draft=item.optJSONObject("chat_draft") ?: return
         val phone=CallReview.phone(draft.optString("customer_phone"))
+        val address=CallReview.comparableAddress(draft.optString("address"))
         if(company.role!="관리자" || item.optString("chat_company")!=company.id ||
-            item.optString("site_id").isNotBlank() || item.optJSONObject("registration")!=null || phone.isBlank()) {
+            item.optString("site_id").isNotBlank() || item.optJSONObject("registration")!=null || (phone.isBlank() && address.length<8)) {
             callMatches=null;return
         }
         val existing=callMatches
-        if(existing!=null && existing.uid==uid && existing.company==company.id && existing.record==id && existing.phone==phone && !existing.failed) return
-        callMatches=CallMatches(uid,company.id,id,phone,true)
+        if(existing!=null && existing.uid==uid && existing.company==company.id && existing.record==id && existing.phone==phone && existing.address==address && !existing.failed) return
+        callMatches=CallMatches(uid,company.id,id,phone,address,true)
         render()
         val epoch=sessionEpoch
         scope.launch {
             try {
                 val rows=auth.assistantSites(uid,company.id,true)
-                val sites=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
-                    .filter { it.optString("company_id")==company.id && CallReview.samePhone(phone,it.optString("customer_phone")) }
-                    .take(50).map { JSONObject().put("id",it.optString("id")).put("site_name",it.optString("site_name"))
-                        .put("address",it.optString("address")).put("customer_name",it.optString("customer_name")) }
+                val companySites=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.filter { it.optString("company_id")==company.id }
+                fun clean(it:JSONObject)=JSONObject().put("id",it.optString("id")).put("site_name",it.optString("site_name"))
+                    .put("address",it.optString("address")).put("customer_name",it.optString("customer_name"))
+                val sites=companySites.filter { CallReview.samePhone(phone,it.optString("customer_phone")) }.take(50).map(::clean)
+                val addressSites=companySites.filter { !CallReview.samePhone(phone,it.optString("customer_phone")) && CallReview.similarAddress(address,it.optString("address")) }.take(10).map(::clean)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" ||
-                    chatId!=id || recordById(id)?.optJSONObject("chat_draft")?.optString("customer_phone")?.let { CallReview.phone(it) }!=phone) return@launch
-                callMatches=CallMatches(uid,company.id,id,phone,false,sites)
+                    chatId!=id || recordById(id)?.optJSONObject("chat_draft")?.let { CallReview.phone(it.optString("customer_phone"))!=phone || CallReview.comparableAddress(it.optString("address"))!=address }!=false) return@launch
+                callMatches=CallMatches(uid,company.id,id,phone,address,false,sites,addressSites)
             } catch(e:CancellationException) { throw e }
-              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && chatId==id) callMatches=CallMatches(uid,company.id,id,phone,false,failed=true) }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && chatId==id) callMatches=CallMatches(uid,company.id,id,phone,address,false,failed=true) }
             finally { if(epoch==sessionEpoch && chatId==id && account?.userId==uid) render() }
         }
     }
@@ -1096,29 +1100,102 @@ class MainActivity : Activity() {
             }
         } };dialog.show()
     }
+    private fun showFailedRecordings() {
+        val uid=account?.userId ?: return
+        val list=records()
+        val failed=CallListOrder.indicesNewestFirst((0 until list.length()).map { list.optJSONObject(it)?.optLong("recorded_at",0L) ?: 0L })
+            .mapNotNull { list.optJSONObject(it) }.filter { it.optString("status")=="분석 실패" && it.optString("site_id").isBlank() }
+        if(failed.isEmpty()) { message("다시 분석할 통화가 없습니다.");return }
+        AlertDialog.Builder(this).setTitle("분석 실패한 통화")
+            .setItems(failed.map { item ->
+                val timestamp=item.optLong("recorded_at",0L)
+                val time=if(timestamp>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(timestamp)) else "통화 시간 미확인"
+                item.optString("name","통화 녹음")+"\n"+time
+            }.toTypedArray()) { _,index ->
+                val item=failed[index];val id=item.optString("id")
+                AlertDialog.Builder(this).setTitle("다시 분석할까요?")
+                    .setMessage(item.optString("name","통화 녹음")+"\n\n"+item.optString("summary").ifBlank { "녹음 파일을 확인해 주세요." })
+                    .setNegativeButton("취소",null).setPositiveButton("다시 분석") { _,_ ->
+                        val current=recordById(id)
+                        if(account?.userId==uid && current?.optString("status")=="분석 실패" && current.optString("site_id").isBlank()) retryOffline(id)
+                        else message("통화 상태가 변경되었습니다. 목록을 다시 확인해 주세요.")
+                    }.show()
+            }.setNegativeButton("닫기",null).show()
+    }
     private fun showConversationList() {
-        val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
-        if(entries.isEmpty()) { message("아직 상담 대화가 없습니다.");return }
-        AlertDialog.Builder(this).setTitle("상담 대화").setItems(entries.map { it.optString("name")+" · "+it.optString("status") }.toTypedArray()) { _,index ->
-            val item=entries[index]
-            if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
+        val items=records();val entries=CallListOrder.indicesNewestFirst((0 until items.length()).map { items.optJSONObject(it)?.optLong("recorded_at",0L) ?: 0L }).mapNotNull { items.optJSONObject(it) }
+        if(entries.isEmpty()) { message("아직 통화 기록이 없습니다.");return }
+        fun category(item:JSONObject):String = when {
+            item.optString("site_id").isNotBlank() || item.optString("status")=="현장 등록 완료" -> "등록 완료"
+            consultationDisposition(item)!="active" -> "보류 · 등록 안 함"
+            item.optString("status")=="확인 필요" -> "확인 필요"
+            item.optString("status")=="분석 실패" -> "분석 실패"
+            else -> "분석 중 · 재확인"
+        }
+        val groups=listOf("전체","확인 필요","등록 완료","보류 · 등록 안 함","분석 실패","분석 중 · 재확인")
+        val search=EditText(this).apply { hint="고객명 또는 전화번호 검색";setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("통화 관리 · 검색").setView(search)
+            .setNegativeButton("닫기",null).setPositiveButton("상태 선택") { _,_ ->
+        val query=search.text.toString().trim()
+        val matches=entries.filter { item ->
+            val draft=item.optJSONObject("chat_draft")
+            listOf(item.optString("name"),draft?.optString("customer_name").orEmpty(),draft?.optString("customer_phone").orEmpty())
+                .any { it.contains(query,ignoreCase=true) || (query.isNotBlank() && query.all { ch -> ch.isDigit() || ch=='-' || ch==' ' } && query.any(Char::isDigit) && it.filter(Char::isDigit).contains(query.filter(Char::isDigit))) }
+        }
+        AlertDialog.Builder(this).setTitle("통화 상태 선택").setItems(groups.map { group ->
+            "$group (${if(group=="전체") matches.size else matches.count { category(it)==group }})"
+        }.toTypedArray()) { _,which ->
+            val filtered=matches.filter { which==0 || category(it)==groups[which] }
+            if(filtered.isEmpty()) { message("해당하는 통화가 없습니다.");return@setItems }
+            AlertDialog.Builder(this).setTitle(groups[which]).setItems(filtered.map {
+                val draft=it.optJSONObject("chat_draft")
+                val title=draft?.optString("customer_name")?.takeIf { value -> value.isNotBlank() && value!="null" } ?: it.optString("name","통화 녹음")
+                val summary=it.optString("summary").replace('\n',' ').take(70)
+                val timestamp=it.optLong("recorded_at",0L)
+                val time=if(timestamp>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(timestamp)) else "통화 시간 미확인"
+                val phone=draft?.optString("customer_phone")?.takeIf { value -> value.isNotBlank() && value!="null" } ?: CallDraftHints.phone(it.optString("name"))
+                "$title · ${category(it)}\n$time${if(phone.isNotBlank()) " · $phone" else ""}${if(summary.isNotBlank()) "\n$summary" else ""}"
+            }.toTypedArray()) { _,index ->
+            val item=filtered[index]
+            if(item.optString("status")=="분석 실패" && item.optString("site_id").isBlank()) {
+                val id=item.optString("id");val uid=account?.userId
+                AlertDialog.Builder(this).setTitle("녹음 분석 실패")
+                    .setMessage(item.optString("name","통화 녹음")+"\n\n"+item.optString("summary").ifBlank { "녹음 파일을 확인해 주세요." }+"\n\n이 녹음을 휴대폰에서 다시 분석할까요?")
+                    .setNegativeButton("닫기",null).setPositiveButton("다시 분석") { _,_ ->
+                        if(uid!=null && account?.userId==uid && recordById(id)?.optString("status")=="분석 실패" && recordById(id)?.optString("site_id").orEmpty().isBlank()) retryOffline(id)
+                        else message("통화 상태가 변경되었습니다. 목록을 다시 확인해 주세요.")
+                    }.show()
+            } else if(item.optString("status") in listOf("확인 필요","현장 등록 완료") || item.optJSONArray("chat_messages")!=null) {
                 settingsOpen=false;showRegistrationConfirmation(item.optString("id"))
             } else { message(item.optString("status")+" 상태입니다. 설정에서 분석 상태를 확인할 수 있습니다.") }
+            }.setNegativeButton("닫기",null).show()
         }.setNegativeButton("닫기",null).show()
+        }.show()
     }
     private fun chatHeader(page: LinearLayout) {
-        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.rgb(29,67,50),16) }
-        val menu=TextView(this).apply { text="☰";textSize=24f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
+        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.WHITE,18,Color.rgb(226,232,225)) }
+        val menu=TextView(this).apply { text="☰";textSize=22f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
-        bar.addView(text("현장 AI 비서",19f,true,Color.WHITE),LinearLayout.LayoutParams(0,-2,1f))
-        val web=TextView(this).apply { text="업무";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="앱 안에서 업무 처리";setOnClickListener { showFeatures() } }
-        val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
+        bar.addView(text("필름장이 비서",17f,true,Color.rgb(31,57,43)),LinearLayout.LayoutParams(0,-2,1f))
+        val web=TextView(this).apply { text="업무";textSize=13f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="앱 안에서 업무 처리";setOnClickListener { showFeatures() } }
+        val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
         inboxBadge=inbox
         bar.addView(inbox,LinearLayout.LayoutParams(dp(58),dp(52)))
         bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
-        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
+        val home=TextView(this).apply { text="＋";textSize=25f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="추가 메뉴 열기";setOnClickListener { showAddMenu() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
         page.addView(bar)
+    }
+    private fun showAddMenu() {
+        val owner=selectedCompany()?.role=="관리자"
+        val labels=if(owner) arrayOf("새 현장 등록", "통화·상담 목록", "비서 홈") else arrayOf("현장 찾기", "통화·상담 목록", "비서 홈")
+        AlertDialog.Builder(this).setTitle("무엇을 할까요?").setItems(labels) { _,which ->
+            when(which) {
+                0 -> if(owner) showNewSiteRegistration() else lookupSites(AssistantRequests.Request("sites"))
+                1 -> showConversationList()
+                2 -> { chatId=null;settingsOpen=false;visibleConversationKey=null;render() }
+            }
+        }.setNegativeButton("닫기",null).show()
     }
     private fun showAssistantMenu() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
@@ -4483,6 +4560,14 @@ class MainActivity : Activity() {
             render();return
         }
         val request=AssistantRequests.parse(input,java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
+        val ambiguous=AssistantRequests.ambiguousFeatures(input,selectedCompany()?.role=="관리자")
+        if(request.kind=="feature" && ambiguous.size>1) {
+            appendHomeMessage("여러 기능이 포함되어 있어요. 먼저 열 기능을 선택해 주세요.");render()
+            AlertDialog.Builder(this).setTitle("어떤 기능을 열까요?").setItems(ambiguous.map { it.title }.toTypedArray()) { _,index ->
+                val selected=AssistantRequests.feature(ambiguous[index].id,selectedCompany()?.role=="관리자")
+                if(selected!=null) openFeature(selected) else message("현재 계정에서 사용할 수 없는 기능입니다.")
+            }.setNegativeButton("취소",null).show();return
+        }
         when(request.kind) {
             "briefing" -> { lookupBriefing(request);return }
             "site_action" -> {
@@ -4533,7 +4618,19 @@ class MainActivity : Activity() {
                 if(latest!=null) showRegistrationConfirmation(latest.optString("id"))
                 else { appendHomeMessage("지금 확인할 새 상담은 없습니다. 새 상담이 들어오면 알려드리겠습니다.");render() }
             }
-            else -> { appendHomeMessage("‘이번 주 현장 알려줘’, ‘다음 주는?’, ‘청라 현장 찾아줘’, ‘1번 현장 상세’처럼 요청해 주세요. 견적·재고·입금 등의 작업은 ‘전체 기능’에서 기존 업무 화면으로 연결할 수 있습니다.");render() }
+            else -> {
+                val suggestions=AssistantRequests.suggestions(input,selectedCompany()?.role=="관리자")
+                if(suggestions.isEmpty()) {
+                    appendHomeMessage("원하시는 기능을 정확히 찾지 못했어요. 예를 들어 ‘오늘 현장 보여줘’ 또는 ‘미수금 확인’이라고 말씀해 주세요.");render()
+                } else {
+                    appendHomeMessage("말씀하신 내용을 정확히 이해하지 못했어요. 원하시는 기능을 선택해 주세요.");render()
+                    AlertDialog.Builder(this).setTitle("이 기능을 찾으시나요?")
+                        .setItems(suggestions.map { it.title }.toTypedArray()) { _, index ->
+                            val selected=AssistantRequests.feature(suggestions[index].id,selectedCompany()?.role=="관리자")
+                            if(selected!=null) openFeature(selected) else message("현재 계정에서 사용할 수 없는 기능입니다.")
+                        }.setNegativeButton("다시 입력",null).show()
+                }
+            }
         }
     }
     private var homeScrollPosition=0
@@ -4542,7 +4639,8 @@ class MainActivity : Activity() {
         val candidate=latestConsultation()
         val key=listOf("home",followUpItems().map { it.optString("id")+it.optJSONObject("follow_up").toString() },account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
             prefs.getString("selected_site_company",null),prefs.getString("selected_site_id",null),prefs.getString("selected_site_name",null),
-            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
+            candidate?.optString("id"),candidate?.optString("name"),folder()?.toString(),notificationsEnabled(),account?.userId?.let { BackgroundCalls.resultPrefs(applicationContext,it).getString("scan_status","") },
+            records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" && list.optJSONObject(it)?.optString("site_id").orEmpty().isBlank() } },selectedCompany()?.role,ScheduleDates.today(),dailyState,dailyExpanded).toString()
         if(visibleConversationKey==key) {
             val stale=dailyState
             if(stale!=null && !stale.loading && !stale.error && System.currentTimeMillis()-stale.loadedAt>=300_000L)
@@ -4566,7 +4664,7 @@ class MainActivity : Activity() {
             item.addView(image,LinearLayout.LayoutParams(dp(22),dp(22)))
             item.addView(text(label,12f,true,Color.rgb(35,65,48)).apply { gravity=Gravity.CENTER;setPadding(0,dp(6),0,0) })
             item.setOnClickListener { action() }
-            quickRow.addView(item,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(10),dp(3),dp(4)) });item.minimumHeight=dp(76)
+            quickRow.addView(item,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(10),dp(3),dp(4)) });item.minimumHeight=dp(68)
         }
         quick(if(isOwner) "현장 등록" else "현장 찾기",android.R.drawable.ic_menu_add) {
             if(isOwner) openNativeFeature("new-site") else lookupSites(AssistantRequests.Request("sites"))
@@ -4581,6 +4679,25 @@ class MainActivity : Activity() {
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val company=selectedCompany();val uid=account?.userId
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
+        if(uid!=null) {
+            val bgPrefs=BackgroundCalls.resultPrefs(applicationContext,uid)
+            val last=bgPrefs.getLong("last_successful_scan_at",0L)
+            val scanError=bgPrefs.getString("last_scan_error","").orEmpty()
+            val status=when {
+                folder()==null -> "녹음 폴더 연결 필요"
+                scanError.isNotBlank() -> "녹음 폴더 확인 필요"
+                !notificationsEnabled() -> "알림 꺼짐"
+                BackgroundCalls.running.get() -> "녹음 분석 중"
+                else -> "녹음 폴더 연결됨"
+            }
+            val checked=if(last>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(last)) else "아직 확인 기록 없음"
+            body.addView(text("통화 확인 · $status\n마지막 폴더 확인: $checked",13f,true,Color.rgb(49,92,72)).apply {
+                setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223));isClickable=true;isFocusable=true
+                setOnClickListener { settingsOpen=true;showSetupDetails=true;render() }
+            },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+            val failed=records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" && list.optJSONObject(it)?.optString("site_id").orEmpty().isBlank() } }
+            if(failed>0) addButton(body,"분석 실패 ${failed}건 확인",false) { showFailedRecordings() }
+        }
         if(company!=null && uid!=null) {
             val tasks=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
             tasks.addView(text("오늘 업무 브리핑",18f,true))
@@ -4823,8 +4940,11 @@ class MainActivity : Activity() {
             }
         }
         if(!done && !paused && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
-        val preview=callMatches?.takeIf { selectedCompany()?.role=="관리자" && item.optString("chat_company")==it.company && it.uid==account?.userId && it.company==selectedCompany()?.id && it.record==id && it.phone==CallReview.phone(data?.optString("customer_phone").orEmpty()) }
+        val preview=callMatches?.takeIf { selectedCompany()?.role=="관리자" && item.optString("chat_company")==it.company && it.uid==account?.userId && it.company==selectedCompany()?.id && it.record==id && it.phone==CallReview.phone(data?.optString("customer_phone").orEmpty()) && it.address==CallReview.comparableAddress(data?.optString("address").orEmpty()) }
         if(!done && !paused && !busy && reg==null && preview!=null) {
+            if(!preview.loading && !preview.failed && preview.addressSites.isNotEmpty()) {
+                body.addView(text("주소가 비슷한 현장 ${preview.addressSites.size}개가 있습니다. 다른 고객이나 다른 호실일 수 있으니 확인해 주세요.\n"+preview.addressSites.joinToString("\n") { candidateLabel(it) },14f,true))
+            }
             when {
                 preview.loading -> body.addView(text("전화번호로 같은 고객의 현장을 확인하고 있습니다…",14f))
                 preview.failed -> { body.addView(text("기존 현장을 확인하지 못했습니다. 저장할 때 서버에서 다시 확인합니다.",14f));addButton(body,"기존 현장 다시 확인",false) { lookupCallMatches(id) } }
@@ -5176,6 +5296,14 @@ class MainActivity : Activity() {
         }
         addButton(col,"새 녹음 확인",false) { scanFolder();message("녹음 폴더 확인을 요청했습니다.") }
         val scanStatus=BackgroundCalls.resultPrefs(applicationContext,verified.userId).getString("scan_status","").orEmpty()
+        val scanPrefs=BackgroundCalls.resultPrefs(applicationContext,verified.userId)
+        val folderPermission=folder()?.let { selected -> contentResolver.persistedUriPermissions.any { it.uri==selected && it.isReadPermission } } == true
+        val failedRecords=records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" } }
+        val lastScan=scanPrefs.getLong("last_successful_scan_at",0L)
+        val lastScanText=if(lastScan>0) SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.KOREA).format(Date(lastScan)) else "확인 기록 없음"
+        val lastError=scanPrefs.getString("last_scan_error","").orEmpty()
+        col.addView(text("통화 감지 진단\n폴더 읽기 권한: ${if(folderPermission) "연결됨" else "확인 필요"}\n결과 알림: ${if(notificationsEnabled()) "켜짐" else "꺼짐"}\n마지막 폴더 확인: $lastScanText\n분석 실패: ${failedRecords}건${if(lastError.isNotBlank()) "\n$lastError" else ""}",13f,true))
+        if(failedRecords>0) addButton(col,"분석 실패한 통화 보기",false) { showFailedRecordings() }
         if(scanStatus.isNotBlank()) col.addView(text(scanStatus,12f,false,Color.rgb(76,111,85)))
         if(scanStatus=="새 녹음을 휴대폰에서 분석하고 있습니다." && BackgroundCalls.running.get()) {
             col.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true; contentDescription="새 녹음 분석 중" },LinearLayout.LayoutParams(-1,dp(6)))

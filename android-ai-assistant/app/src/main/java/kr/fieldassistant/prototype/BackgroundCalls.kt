@@ -62,7 +62,7 @@ internal object BackgroundCalls {
             WorkManager.getInstance(ctx).enqueueUniqueWork(RETRY,ExistingWorkPolicy.APPEND_OR_REPLACE,
                 OneTimeWorkRequestBuilder<BackgroundCallWorker>()
                     .setInputData(workDataOf("user" to uid,"generation" to token,"retry" to true))
-                    .setInitialDelay(20,TimeUnit.SECONDS).build())
+                    .setInitialDelay(10,TimeUnit.SECONDS).build())
         } catch(e: Exception) { retryPending.set(false);throw e }
     }
     fun retryStarted() { retryPending.set(false) }
@@ -73,7 +73,7 @@ internal object BackgroundCalls {
         if(!active(ctx,uid)) return
         val token=generation(ctx) ?: return
         val constraints=Constraints.Builder().addContentUriTrigger(tree,true)
-            .setTriggerContentUpdateDelay(10,TimeUnit.SECONDS).setTriggerContentMaxDelay(30,TimeUnit.SECONDS).build()
+            .setTriggerContentUpdateDelay(3,TimeUnit.SECONDS).setTriggerContentMaxDelay(10,TimeUnit.SECONDS).build()
         val request=OneTimeWorkRequestBuilder<BackgroundCallWorker>().setInputData(input(uid,token,true)).setConstraints(constraints).build()
         WorkManager.getInstance(ctx).enqueueUniqueWork(WATCH,if(append) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,request)
     }
@@ -117,23 +117,36 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     files.add(Recording(DocumentsContract.buildDocumentUriUsingTree(tree,cursor.getString(0)),name,cursor.getLong(2),cursor.getLong(3)))
                 }
             } ?: throw SecurityException("폴더를 열 수 없습니다")
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putLong("last_successful_scan_at",System.currentTimeMillis()).remove("last_scan_error").apply()
             files.sortBy { it.modified }
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
             val background=BackgroundCalls.resultPrefs(ctx,uid)
             val processed=background.getStringSet("processed",emptySet())!!.toMutableSet()
-            var count=0;var needsRetry=false
+            var count=0;var needsRetry=false;var emptyCount=0;var failedCount=0
             run {
                 for(file in files) {
                     if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
-                    val id=file.uri.toString();if(id in existing || id in processed || file.size<=0) continue
+                    val id=file.uri.toString();if(id in existing || id in processed) continue
                     val key=BackgroundCalls.key(id);val now=System.currentTimeMillis();val size=file.size;val modified=file.modified
+                    // Some providers expose the file before any bytes have been written.
+                    // Retry a bounded number of times instead of silently missing it.
+                    if(size<=0) {
+                        emptyCount++
+                        val attempts=background.getInt("empty_$key",0)
+                        if(CallRetryPolicy.retryEmpty(attempts)) {
+                            background.edit().putInt("empty_$key",attempts+1).apply()
+                            needsRetry=true
+                        }
+                        continue
+                    }
+                    background.edit().remove("empty_$key").apply()
                     val oldSize=background.getLong("size_$key",-1);val first=background.getLong("time_$key",0)
-                    if((modified>0 && now-modified in 0..14999) || oldSize!=size || first==0L || now-first<15000) {
+                    if((modified>0 && now-modified in 0..9999) || oldSize!=size || first==0L || now-first<10000) {
                         background.edit().putLong("size_$key",size).putLong("time_$key",if(oldSize==size && first>0) first else now).apply()
                         needsRetry=true;continue
                     }
                     if(count>=3) { needsRetry=true;break }
-                    val record=JSONObject().put("id",id).put("name",file.name)
+                    val record=JSONObject().put("id",id).put("name",file.name).put("recorded_at",file.modified)
                     var candidate=false
                     var failed=false
                     if(!BackgroundCalls.running.compareAndSet(false,true)) { needsRetry=true;break }
@@ -166,6 +179,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     synchronized(BackgroundCalls.lock) {
                         if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return@synchronized
                         val attempts=if(failed) background.getInt("attempts_$key",0)+1 else 0
+                        if(failed && !CallRetryPolicy.shouldRetry(failed,attempts)) failedCount++
                         if(CallRetryPolicy.shouldRetry(failed,attempts)) needsRetry=true else processed.add(id)
                         val edit=background.edit().putInt("attempts_$key",attempts).putStringSet("processed",processed.toSet())
                         // Publishing a record makes the foreground mark it seen. Publish only after retry is complete.
@@ -176,19 +190,17 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                 }
             }
             if(BackgroundCalls.active(ctx,uid,token) && !isStopped) {
-                val summary=when {
-                    needsRetry -> "확인할 녹음이 남아 있어 잠시 후 다시 확인합니다."
-                    count>0 -> "새 녹음 분석을 마쳤습니다. 아래 비서함을 확인해 주세요."
-                    else -> "연결된 폴더에 새 녹음이 없습니다."
-                }
+                val summary=CallRetryPolicy.scanSummary(needsRetry,emptyCount,failedCount,count)
                 BackgroundCalls.status(ctx,uid,summary)
                 if(needsRetry) BackgroundCalls.retryLater(ctx,uid,token)
             }
             return Result.success()
         } catch(_: SecurityException) {
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putString("last_scan_error","녹음 폴더에 접근할 수 없습니다. 폴더를 다시 연결해 주세요.").apply()
             if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더에 접근할 수 없습니다. 폴더를 다시 연결해 주세요.")
             return Result.success()
         } catch(_: Exception) {
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putString("last_scan_error","녹음 폴더 확인에 실패했습니다. 잠시 후 다시 확인합니다.").apply()
             if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더 확인에 실패했습니다. 잠시 후 다시 확인합니다.")
             return Result.retry()
         }
