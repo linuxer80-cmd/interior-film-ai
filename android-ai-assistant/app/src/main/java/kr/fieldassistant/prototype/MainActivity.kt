@@ -82,7 +82,7 @@ class MainActivity : Activity() {
     private val inFlight = mutableSetOf<String>()
     private val savingRegistrations = mutableSetOf<String>()
     private var registrationDialog: AlertDialog? = null
-    private data class CallMatches(val uid:String,val company:String,val record:String,val phone:String,val loading:Boolean,val sites:List<JSONObject> = emptyList(),val failed:Boolean=false)
+    private data class CallMatches(val uid:String,val company:String,val record:String,val phone:String,val address:String,val loading:Boolean,val sites:List<JSONObject> = emptyList(),val addressSites:List<JSONObject> = emptyList(),val failed:Boolean=false)
     private var callMatches:CallMatches?=null
     private var resultListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var listenerUser: String? = null
@@ -756,27 +756,29 @@ class MainActivity : Activity() {
         val uid=account?.userId ?: return
         val draft=item.optJSONObject("chat_draft") ?: return
         val phone=CallReview.phone(draft.optString("customer_phone"))
+        val address=CallReview.comparableAddress(draft.optString("address"))
         if(company.role!="관리자" || item.optString("chat_company")!=company.id ||
-            item.optString("site_id").isNotBlank() || item.optJSONObject("registration")!=null || phone.isBlank()) {
+            item.optString("site_id").isNotBlank() || item.optJSONObject("registration")!=null || (phone.isBlank() && address.length<8)) {
             callMatches=null;return
         }
         val existing=callMatches
-        if(existing!=null && existing.uid==uid && existing.company==company.id && existing.record==id && existing.phone==phone && !existing.failed) return
-        callMatches=CallMatches(uid,company.id,id,phone,true)
+        if(existing!=null && existing.uid==uid && existing.company==company.id && existing.record==id && existing.phone==phone && existing.address==address && !existing.failed) return
+        callMatches=CallMatches(uid,company.id,id,phone,address,true)
         render()
         val epoch=sessionEpoch
         scope.launch {
             try {
                 val rows=auth.assistantSites(uid,company.id,true)
-                val sites=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
-                    .filter { it.optString("company_id")==company.id && CallReview.samePhone(phone,it.optString("customer_phone")) }
-                    .take(50).map { JSONObject().put("id",it.optString("id")).put("site_name",it.optString("site_name"))
-                        .put("address",it.optString("address")).put("customer_name",it.optString("customer_name")) }
+                val companySites=(0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.filter { it.optString("company_id")==company.id }
+                fun clean(it:JSONObject)=JSONObject().put("id",it.optString("id")).put("site_name",it.optString("site_name"))
+                    .put("address",it.optString("address")).put("customer_name",it.optString("customer_name"))
+                val sites=companySites.filter { CallReview.samePhone(phone,it.optString("customer_phone")) }.take(50).map(::clean)
+                val addressSites=companySites.filter { !CallReview.samePhone(phone,it.optString("customer_phone")) && CallReview.similarAddress(address,it.optString("address")) }.take(10).map(::clean)
                 if(epoch!=sessionEpoch || account?.userId!=uid || selectedCompany()?.id!=company.id || selectedCompany()?.role!="관리자" ||
-                    chatId!=id || recordById(id)?.optJSONObject("chat_draft")?.optString("customer_phone")?.let { CallReview.phone(it) }!=phone) return@launch
-                callMatches=CallMatches(uid,company.id,id,phone,false,sites)
+                    chatId!=id || recordById(id)?.optJSONObject("chat_draft")?.let { CallReview.phone(it.optString("customer_phone"))!=phone || CallReview.comparableAddress(it.optString("address"))!=address }!=false) return@launch
+                callMatches=CallMatches(uid,company.id,id,phone,address,false,sites,addressSites)
             } catch(e:CancellationException) { throw e }
-              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && chatId==id) callMatches=CallMatches(uid,company.id,id,phone,false,failed=true) }
+              catch(_:Exception) { if(epoch==sessionEpoch && account?.userId==uid && selectedCompany()?.id==company.id && chatId==id) callMatches=CallMatches(uid,company.id,id,phone,address,false,failed=true) }
             finally { if(epoch==sessionEpoch && chatId==id && account?.userId==uid) render() }
         }
     }
@@ -4523,6 +4525,14 @@ class MainActivity : Activity() {
             render();return
         }
         val request=AssistantRequests.parse(input,java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
+        val ambiguous=AssistantRequests.ambiguousFeatures(input,selectedCompany()?.role=="관리자")
+        if(request.kind=="feature" && ambiguous.size>1) {
+            appendHomeMessage("여러 기능이 포함되어 있어요. 먼저 열 기능을 선택해 주세요.");render()
+            AlertDialog.Builder(this).setTitle("어떤 기능을 열까요?").setItems(ambiguous.map { it.title }.toTypedArray()) { _,index ->
+                val selected=AssistantRequests.feature(ambiguous[index].id,selectedCompany()?.role=="관리자")
+                if(selected!=null) openFeature(selected) else message("현재 계정에서 사용할 수 없는 기능입니다.")
+            }.setNegativeButton("취소",null).show();return
+        }
         when(request.kind) {
             "briefing" -> { lookupBriefing(request);return }
             "site_action" -> {
@@ -4890,8 +4900,11 @@ class MainActivity : Activity() {
             }
         }
         if(!done && !paused && reg==null) addButton(body,"등록 내용 수정",false) { editChatDraft(id) }
-        val preview=callMatches?.takeIf { selectedCompany()?.role=="관리자" && item.optString("chat_company")==it.company && it.uid==account?.userId && it.company==selectedCompany()?.id && it.record==id && it.phone==CallReview.phone(data?.optString("customer_phone").orEmpty()) }
+        val preview=callMatches?.takeIf { selectedCompany()?.role=="관리자" && item.optString("chat_company")==it.company && it.uid==account?.userId && it.company==selectedCompany()?.id && it.record==id && it.phone==CallReview.phone(data?.optString("customer_phone").orEmpty()) && it.address==CallReview.comparableAddress(data?.optString("address").orEmpty()) }
         if(!done && !paused && !busy && reg==null && preview!=null) {
+            if(!preview.loading && !preview.failed && preview.addressSites.isNotEmpty()) {
+                body.addView(text("주소가 비슷한 현장 ${preview.addressSites.size}개가 있습니다. 다른 고객이나 다른 호실일 수 있으니 확인해 주세요.\n"+preview.addressSites.joinToString("\n") { candidateLabel(it) },14f,true))
+            }
             when {
                 preview.loading -> body.addView(text("전화번호로 같은 고객의 현장을 확인하고 있습니다…",14f))
                 preview.failed -> { body.addView(text("기존 현장을 확인하지 못했습니다. 저장할 때 서버에서 다시 확인합니다.",14f));addButton(body,"기존 현장 다시 확인",false) { lookupCallMatches(id) } }

@@ -155,6 +155,14 @@ internal object AssistantRequests {
         return Request("unknown")
     }
     /** Suggest navigation only. Never infer permission to execute a change. */
+    fun ambiguousFeatures(input:String,owner:Boolean):List<Feature> {
+        val q=NaturalLanguage.normalize(input).replace(Regex("\\s+"),"")
+        val signals=listOf("quotes" to Regex("견적"),"receivables" to Regex("미수금|미수|잔금|입금"),
+            "inventory" to Regex("재고|입고|반출|반입"),"profit" to Regex("매출|수익"),
+            "expenses" to Regex("경비"),"report" to Regex("완료보고|보고서"),"samples" to Regex("샘플"),
+            "customer-chat" to Regex("고객채팅"),"cutting" to Regex("재단"))
+        return signals.filter { it.second.containsMatchIn(q) }.mapNotNull { feature(it.first,owner) }.distinctBy { it.id }.take(3)
+    }
     fun suggestions(input:String, owner:Boolean):List<Feature> {
         val query=NaturalLanguage.normalize(input).replace(Regex("[^가-힣a-zA-Z0-9]"), "").lowercase()
         if(query.length<2) return emptyList()

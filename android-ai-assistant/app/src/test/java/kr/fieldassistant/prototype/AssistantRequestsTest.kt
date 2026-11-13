@@ -3,6 +3,12 @@ import java.time.LocalDate
 import org.junit.Assert.*
 import org.junit.Test
 class AssistantRequestsTest {
+    @Test fun multipleExplicitFeaturesRequireChoice() {
+        val ids=AssistantRequests.ambiguousFeatures("견적이랑 미수금 보여줘",true).map { it.id }
+        assertTrue(ids.contains("quotes"));assertTrue(ids.contains("receivables"))
+        assertTrue(AssistantRequests.ambiguousFeatures("견적 보여줘",true).size==1)
+        assertTrue(AssistantRequests.ambiguousFeatures("견적이랑 미수금",false).none { it.ownerOnly })
+    }
     private val monday=LocalDate.of(2026,11,2)
     @Test fun unclearRequestsOfferAtMostThreeAccessibleChoices() {
         val owner=AssistantRequests.suggestions("미수금 확인하고 싶어요",true)
