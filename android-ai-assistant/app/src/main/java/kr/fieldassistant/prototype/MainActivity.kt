@@ -490,7 +490,7 @@ class MainActivity : Activity() {
                         val a=records();var found=false
                         if(recordById(id)?.optString("site_id").orEmpty().isNotBlank()) { message("이미 현장에 등록한 녹음입니다. 비서함을 확인해 주세요.");return@setPositiveButton }
                         for(i in 0 until a.length()) { val item=a.optJSONObject(i) ?: continue;if(item.optString("id")==id) { found=true;break } }
-                        if(!found) a.put(JSONObject().put("id",id).put("name",name).put("status","분석 대기"))
+                        if(!found) a.put(JSONObject().put("id",id).put("name",name).put("recorded_at",modified).put("status","분석 대기"))
                         val existing=seen();existing.add(id)
                         if(!prefs.edit().putString("records",a.toString()).putStringSet("seen",existing).commit()) {
                             message("분석을 시작하지 못했습니다. 다시 시도해 주세요.")
@@ -1118,7 +1118,7 @@ class MainActivity : Activity() {
         val matches=entries.filter { item ->
             val draft=item.optJSONObject("chat_draft")
             listOf(item.optString("name"),draft?.optString("customer_name").orEmpty(),draft?.optString("customer_phone").orEmpty())
-                .any { it.contains(query,ignoreCase=true) || (query.any(Char::isDigit) && it.filter(Char::isDigit).contains(query.filter(Char::isDigit))) }
+                .any { it.contains(query,ignoreCase=true) || (query.isNotBlank() && query.all { ch -> ch.isDigit() || ch=='-' || ch==' ' } && query.any(Char::isDigit) && it.filter(Char::isDigit).contains(query.filter(Char::isDigit))) }
         }
         AlertDialog.Builder(this).setTitle("통화 상태 선택").setItems(groups.map { group ->
             "$group (${if(group=="전체") matches.size else matches.count { category(it)==group }})"
@@ -1129,7 +1129,10 @@ class MainActivity : Activity() {
                 val draft=it.optJSONObject("chat_draft")
                 val title=draft?.optString("customer_name")?.takeIf { value -> value.isNotBlank() && value!="null" } ?: it.optString("name","통화 녹음")
                 val summary=it.optString("summary").replace('\n',' ').take(70)
-                "$title · ${category(it)}${if(summary.isNotBlank()) "\n$summary" else ""}"
+                val timestamp=it.optLong("recorded_at",0L)
+                val time=if(timestamp>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(timestamp)) else "통화 시간 미확인"
+                val phone=draft?.optString("customer_phone")?.takeIf { value -> value.isNotBlank() && value!="null" } ?: CallDraftHints.phone(it.optString("name"))
+                "$title · ${category(it)}\n$time${if(phone.isNotBlank()) " · $phone" else ""}${if(summary.isNotBlank()) "\n$summary" else ""}"
             }.toTypedArray()) { _,index ->
             val item=filtered[index]
             if(item.optString("status")=="분석 실패" && item.optString("site_id").isBlank()) {
