@@ -117,6 +117,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     files.add(Recording(DocumentsContract.buildDocumentUriUsingTree(tree,cursor.getString(0)),name,cursor.getLong(2),cursor.getLong(3)))
                 }
             } ?: throw SecurityException("폴더를 열 수 없습니다")
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putLong("last_successful_scan_at",System.currentTimeMillis()).remove("last_scan_error").apply()
             files.sortBy { it.modified }
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
             val background=BackgroundCalls.resultPrefs(ctx,uid)
@@ -144,7 +145,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                         needsRetry=true;continue
                     }
                     if(count>=3) { needsRetry=true;break }
-                    val record=JSONObject().put("id",id).put("name",file.name)
+                    val record=JSONObject().put("id",id).put("name",file.name).put("recorded_at",file.modified)
                     var candidate=false
                     var failed=false
                     if(!BackgroundCalls.running.compareAndSet(false,true)) { needsRetry=true;break }
@@ -197,9 +198,11 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             }
             return Result.success()
         } catch(_: SecurityException) {
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putString("last_scan_error","녹음 폴더에 접근할 수 없습니다. 폴더를 다시 연결해 주세요.").apply()
             if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더에 접근할 수 없습니다. 폴더를 다시 연결해 주세요.")
             return Result.success()
         } catch(_: Exception) {
+            BackgroundCalls.resultPrefs(ctx,uid).edit().putString("last_scan_error","녹음 폴더 확인에 실패했습니다. 잠시 후 다시 확인합니다.").apply()
             if(BackgroundCalls.active(ctx,uid,token)) BackgroundCalls.status(ctx,uid,"녹음 폴더 확인에 실패했습니다. 잠시 후 다시 확인합니다.")
             return Result.retry()
         }

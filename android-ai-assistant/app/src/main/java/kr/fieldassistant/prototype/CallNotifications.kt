@@ -40,9 +40,14 @@ internal object CallNotifications {
                 ?: BackgroundCalls.resultPrefs(ctx,uid).getString("record_"+BackgroundCalls.key(id),null)?.let { JSONObject(it) }
         } catch(_:Exception) { null }
         val draft=record?.optJSONObject("chat_draft")
-        val detail=listOf("site_name","customer_name","work_description").mapNotNull { key -> draft?.optString(key)?.takeIf { it.isNotBlank() && it!="null" } }.joinToString(" · ").take(140)
-            .ifBlank { record?.optString("name")?.take(100).orEmpty() }
-        val body=listOf(detail,"현장에 등록할까요?").filter { it.isNotBlank() }.joinToString("\n")
+        val name=record?.optString("name").orEmpty()
+        val work=draft?.optString("work_description")?.takeUnless { it.isBlank() || it=="null" } ?: CallDraftHints.work(record?.optString("transcript").orEmpty())
+        val phone=draft?.optString("customer_phone")?.takeUnless { it.isBlank() || it=="null" } ?: CallDraftHints.phone(name)
+        val timestamp=record?.optLong("recorded_at",0L) ?: 0L
+        val time=if(timestamp>0) java.text.SimpleDateFormat("MM월 dd일 HH:mm",java.util.Locale.KOREA).format(java.util.Date(timestamp)) else ""
+        val detail=listOf(draft?.optString("customer_name")?.takeUnless { it.isBlank() || it=="null" }.orEmpty(),phone,work).filter { it.isNotBlank() }.joinToString(" · ").take(140)
+            .ifBlank { name.take(100) }
+        val body=listOf(time,detail,"인식 내용은 확인이 필요합니다. 현장에 등록할까요?").filter { it.isNotBlank() }.joinToString("\n")
         NotificationInbox.record(ctx,uid,"call-$id","call","견적 문의로 보이는 전화가 왔습니다",body,yes,null,id.hashCode() and Int.MAX_VALUE)
         val review=PendingIntent.getActivity(ctx,0,yes,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(ctx,"assistant_results").addExtras(NotificationInbox.owner(uid)).setSmallIcon(android.R.drawable.ic_dialog_info)

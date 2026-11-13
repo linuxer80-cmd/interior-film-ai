@@ -573,6 +573,7 @@ class MainActivity : Activity() {
                         if(result.text.isBlank()) throw IllegalStateException("음성을 읽지 못했습니다.")
                         val label=if(InquiryMatcher.likely(result.text)) "견적 문의 가능성 있음" else "견적 문의 가능성 확인 필요"
                         updateRecord(current,"확인 필요",result.text,"$label\n인식한 통화 내용을 확인해 주세요."+(if(result.truncated) "\n긴 통화는 앞 15분만 확인했습니다." else ""))
+                        if(InquiryMatcher.likely(result.text) && recordById(current)?.let { consultationDisposition(it)=="active" }==true) postCompletionNotification(current)
                     } catch(e:CancellationException) { throw e }
                       catch(_: Exception) {
                         if(epoch==sessionEpoch && account?.userId==uid) updateRecord(current,"분석 실패",summary="녹음 파일과 휴대폰 저장 공간을 확인한 뒤 다시 시도해 주세요.")
@@ -4645,15 +4646,17 @@ class MainActivity : Activity() {
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
         if(uid!=null) {
             val bgPrefs=BackgroundCalls.resultPrefs(applicationContext,uid)
-            val last=bgPrefs.getLong("last_check_at",0L)
+            val last=bgPrefs.getLong("last_successful_scan_at",0L)
+            val scanError=bgPrefs.getString("last_scan_error","").orEmpty()
             val status=when {
                 folder()==null -> "녹음 폴더 연결 필요"
+                scanError.isNotBlank() -> "녹음 폴더 확인 필요"
                 !notificationsEnabled() -> "알림 꺼짐"
                 BackgroundCalls.running.get() -> "녹음 분석 중"
                 else -> "녹음 폴더 연결됨"
             }
             val checked=if(last>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(last)) else "아직 확인 기록 없음"
-            body.addView(text("통화 확인 · $status\n최근 상태 갱신: $checked",13f,true,Color.rgb(49,92,72)).apply {
+            body.addView(text("통화 확인 · $status\n마지막 폴더 확인: $checked",13f,true,Color.rgb(49,92,72)).apply {
                 setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223));isClickable=true;isFocusable=true
                 setOnClickListener { settingsOpen=true;showSetupDetails=true;render() }
             },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
@@ -5256,6 +5259,13 @@ class MainActivity : Activity() {
         }
         addButton(col,"새 녹음 확인",false) { scanFolder();message("녹음 폴더 확인을 요청했습니다.") }
         val scanStatus=BackgroundCalls.resultPrefs(applicationContext,verified.userId).getString("scan_status","").orEmpty()
+        val scanPrefs=BackgroundCalls.resultPrefs(applicationContext,verified.userId)
+        val folderPermission=folder()?.let { selected -> contentResolver.persistedUriPermissions.any { it.uri==selected && it.isReadPermission } } == true
+        val failedRecords=records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" } }
+        val lastScan=scanPrefs.getLong("last_successful_scan_at",0L)
+        val lastScanText=if(lastScan>0) SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.KOREA).format(Date(lastScan)) else "확인 기록 없음"
+        val lastError=scanPrefs.getString("last_scan_error","").orEmpty()
+        col.addView(text("통화 감지 진단\n폴더 읽기 권한: ${if(folderPermission) "연결됨" else "확인 필요"}\n결과 알림: ${if(notificationsEnabled()) "켜짐" else "꺼짐"}\n마지막 폴더 확인: $lastScanText\n분석 실패: ${failedRecords}건${if(lastError.isNotBlank()) "\n$lastError" else ""}",13f,true))
         if(scanStatus.isNotBlank()) col.addView(text(scanStatus,12f,false,Color.rgb(76,111,85)))
         if(scanStatus=="새 녹음을 휴대폰에서 분석하고 있습니다." && BackgroundCalls.running.get()) {
             col.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true; contentDescription="새 녹음 분석 중" },LinearLayout.LayoutParams(-1,dp(6)))
