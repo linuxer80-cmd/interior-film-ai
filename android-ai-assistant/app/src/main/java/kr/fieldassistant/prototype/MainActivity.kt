@@ -1101,7 +1101,7 @@ class MainActivity : Activity() {
         } };dialog.show()
     }
     private fun showConversationList() {
-        val items=records();val entries=(0 until items.length()).reversed().mapNotNull { items.optJSONObject(it) }
+        val items=records();val entries=CallListOrder.indicesNewestFirst((0 until items.length()).map { items.optJSONObject(it)?.optLong("recorded_at",0L) ?: 0L }).mapNotNull { items.optJSONObject(it) }
         if(entries.isEmpty()) { message("아직 통화 기록이 없습니다.");return }
         fun category(item:JSONObject):String = when {
             item.optString("site_id").isNotBlank() || item.optString("status")=="현장 등록 완료" -> "등록 완료"
