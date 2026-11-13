@@ -122,7 +122,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
             val existing=userPrefs.getStringSet("seen",emptySet())!!.toSet()
             val background=BackgroundCalls.resultPrefs(ctx,uid)
             val processed=background.getStringSet("processed",emptySet())!!.toMutableSet()
-            var count=0;var needsRetry=false
+            var count=0;var needsRetry=false;var emptyCount=0;var failedCount=0
             run {
                 for(file in files) {
                     if(isStopped || !BackgroundCalls.active(ctx,uid,token)) break
@@ -131,8 +131,9 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     // Some providers expose the file before any bytes have been written.
                     // Retry a bounded number of times instead of silently missing it.
                     if(size<=0) {
+                        emptyCount++
                         val attempts=background.getInt("empty_$key",0)
-                        if(attempts<6) {
+                        if(CallRetryPolicy.retryEmpty(attempts)) {
                             background.edit().putInt("empty_$key",attempts+1).apply()
                             needsRetry=true
                         }
@@ -178,6 +179,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                     synchronized(BackgroundCalls.lock) {
                         if(isStopped || !BackgroundCalls.active(ctx,uid,token)) return@synchronized
                         val attempts=if(failed) background.getInt("attempts_$key",0)+1 else 0
+                        if(failed && !CallRetryPolicy.shouldRetry(failed,attempts)) failedCount++
                         if(CallRetryPolicy.shouldRetry(failed,attempts)) needsRetry=true else processed.add(id)
                         val edit=background.edit().putInt("attempts_$key",attempts).putStringSet("processed",processed.toSet())
                         // Publishing a record makes the foreground mark it seen. Publish only after retry is complete.
@@ -188,11 +190,7 @@ class BackgroundCallWorker(context: Context,params: WorkerParameters): Worker(co
                 }
             }
             if(BackgroundCalls.active(ctx,uid,token) && !isStopped) {
-                val summary=when {
-                    needsRetry -> "확인할 녹음이 남아 있어 잠시 후 다시 확인합니다."
-                    count>0 -> "새 녹음 분석을 마쳤습니다. 아래 비서함을 확인해 주세요."
-                    else -> "연결된 폴더에 새 녹음이 없습니다."
-                }
+                val summary=CallRetryPolicy.scanSummary(needsRetry,emptyCount,failedCount,count)
                 BackgroundCalls.status(ctx,uid,summary)
                 if(needsRetry) BackgroundCalls.retryLater(ctx,uid,token)
             }
