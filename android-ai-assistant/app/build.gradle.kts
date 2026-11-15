@@ -20,8 +20,8 @@ android {
         minSdk = 31
         targetSdk = 36
         // CI supplies a monotonically increasing value; set it explicitly for local releases.
-        versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 20071
-        versionName = "0.6.71"
+        versionCode = System.getenv("ASSISTANT_VERSION_CODE")?.toIntOrNull() ?: 20072
+        versionName = "0.6.72"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
