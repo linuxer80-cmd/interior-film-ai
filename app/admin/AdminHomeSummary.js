@@ -207,15 +207,6 @@ export default function AdminHomeSummary({ companyId }) {
                 ? "오늘 시공 현장의 일정과 배정을 확인하세요."
                 : "오늘 예정된 시공과 확인할 업무가 없습니다."}
           </p>
-          {preview?.siteId && (
-            <a className="next-task" href={`/admin?${new URLSearchParams({
-              tab: "sites",
-              site: preview.siteId,
-              ...(preview.section ? { section: preview.section } : {}),
-            })}`}>
-              {preview.kind === "review" ? "보고서 검수" : preview.kind === "assignment" ? "일정·배정 확인" : "이 업무 확인"} →
-            </a>
-          )}
 
           {tasks.length > due.length && (
             <small>
@@ -368,19 +359,6 @@ export default function AdminHomeSummary({ companyId }) {
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
-        }
-        .next-task {
-          display: inline-flex;
-          align-items: center;
-          min-height: 44px;
-          margin-top: 8px;
-          padding: 0 14px;
-          border-radius: 10px;
-          background: #285340;
-          color: white;
-          font-size: 14px;
-          font-weight: 800;
-          text-decoration: none;
         }
         button {
           min-height: 44px;
