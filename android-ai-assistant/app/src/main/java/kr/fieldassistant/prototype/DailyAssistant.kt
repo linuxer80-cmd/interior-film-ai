@@ -8,6 +8,12 @@ internal object DailyAssistant {
     data class Site(val id:String,val name:String,val address:String,val work:String,val reportStatus:String)
     data class Briefing(val sites:List<Site>,val consultations:Int?)
     private fun value(row:JSONObject,key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty().trim()
+    fun reportStatus(response:JSONObject):String {
+        if(!response.has("report")) return "unknown"
+        if(response.isNull("report")) return "none"
+        val report=response.optJSONObject("report") ?: return "unknown"
+        return value(report,"review_status").takeIf { it in setOf("pending","approved","rejected") } ?: "unknown"
+    }
     fun briefing(rows:JSONArray,companyId:String,owner:Boolean,date:String):Briefing {
         val scoped=JSONArray()
         for(i in 0 until rows.length()) rows.optJSONObject(i)?.takeIf { value(it,"company_id")==companyId }?.let(scoped::put)

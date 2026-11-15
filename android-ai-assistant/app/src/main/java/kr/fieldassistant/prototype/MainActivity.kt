@@ -4219,7 +4219,7 @@ class MainActivity : Activity() {
                     val checked=data.sites.take(3).map { site ->
                         val status=try {
                             val response=if(company.role=="관리자") auth.assistantAdminReview(uid,company.id,site.id) else auth.assistantWorkReport(uid,company.id,site.id)
-                            response.optJSONObject("report")?.optString("review_status").orEmpty()
+                            DailyAssistant.reportStatus(response)
                         } catch(e:CancellationException) { throw e } catch(_:Exception) { "unknown" }
                         site.copy(reportStatus=status)
                     }
