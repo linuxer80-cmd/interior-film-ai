@@ -2,3 +2,6 @@ node_modules/
 .next/
 .env*
 android-ai-assistant/app/google-services.json
+android-ai-assistant/app/src/main/assets/ggml-small-q5_1.bin
+android-ai-assistant/vendor/whisper/
+android-ai-assistant/scripts/__pycache__/
