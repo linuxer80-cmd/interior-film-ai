@@ -407,7 +407,7 @@ class MainActivity : Activity() {
                     .setMessage("${request.siteName} 현장에 ${when(request.type) { "request" -> "고객 요청"; "after" -> "시공 완료"; else -> "시공 전" }} 사진 ${uris.size}장을 등록합니다. 계속할까요?")
                     .setNegativeButton("취소",null).setPositiveButton("사진 등록") { _,_ ->
                         if(photoBatchActive || workerActionBusy) message("사진 또는 다른 작업이 진행 중입니다. 완료 후 다시 선택해 주세요.")
-                        else { photoBatchActive=true;pendingReportPhotos.clear();pendingReportPhotos.addAll(uris.drop(1));uploadReportPhoto(request,uris.first()) }
+                        else { photoBatchActive=true;photoBatchCompleted=0;photoBatchTotal=uris.size;pendingReportPhotos.clear();pendingReportPhotos.addAll(uris.drop(1));uploadReportPhoto(request,uris.first()) }
                     }.show()
             }
             return
@@ -3167,6 +3167,8 @@ class MainActivity : Activity() {
     private var reportPhotoRequest:ReportPhotoRequest?=null
     private val pendingReportPhotos=java.util.ArrayDeque<Uri>()
     private var photoBatchActive=false
+    private var photoBatchCompleted=0
+    private var photoBatchTotal=0
     private fun pickReportPhoto(request:ReportPhotoRequest) {
         if(photoBatchActive || workerActionBusy) { message("사진 또는 다른 작업이 진행 중입니다. 완료 후 다시 선택해 주세요.");return }
         if(account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
@@ -3198,11 +3200,12 @@ class MainActivity : Activity() {
                 started=true
                 val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,uploadBytes,mime,request.company.role=="관리자")
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
+                    photoBatchCompleted++
                     val next=pendingReportPhotos.pollFirst()
-                    if(next!=null) { message("사진을 등록했습니다. 남은 사진 ${pendingReportPhotos.size+1}장 처리 중");handler.post { uploadReportPhoto(request,next) } }
+                    if(next!=null) { message("사진 ${photoBatchCompleted}/${photoBatchTotal}장 등록됨 · 계속 등록 중");handler.post { uploadReportPhoto(request,next) } }
                     else {
                         photoBatchActive=false
-                        message(response.optString("message").ifBlank { "사진을 등록했습니다." }+(if(request.fromGallery) "" else " 완료보고는 아직 제출되지 않았습니다."))
+                        message((if(photoBatchTotal>1) "사진 ${photoBatchCompleted}장을 등록했습니다." else response.optString("message").ifBlank { "사진을 등록했습니다." })+(if(request.fromGallery) "" else " 완료보고는 아직 제출되지 않았습니다."))
                         if(request.fromGallery) handler.post { if(sitePhotoSessionValid(request.uid,request.company)) requestSitePhotoPage(request.uid,request.company,request.siteId,request.siteName,request.type,0) }
                     }
                 } else { photoBatchActive=false;pendingReportPhotos.clear() }
@@ -3212,10 +3215,10 @@ class MainActivity : Activity() {
                 val remaining=pendingReportPhotos.size;pendingReportPhotos.clear()
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
                     val retry=AlertDialog.Builder(this@MainActivity).setTitle(if(started) "사진 등록 결과 확인 필요" else "사진 전송 전 오류")
-                        .setMessage((e.message ?: "연결 상태를 확인해 주세요.")+(if(started) "\n중복 등록을 막기 위해 먼저 등록된 사진을 확인해 주세요." else "\n선택한 사진을 유지했습니다. 이 사진만 다시 시도할 수 있습니다.")+(if(remaining>0) "\n남은 ${remaining}장은 등록하지 않았습니다. 사진 목록 확인 후 다시 선택해 주세요." else ""))
+                        .setMessage((if(photoBatchCompleted>0) "앞서 ${photoBatchCompleted}장 등록 완료.\n" else "")+(e.message ?: "연결 상태를 확인해 주세요.")+(if(started) "\n중복 등록을 막기 위해 먼저 등록된 사진을 확인해 주세요." else "\n선택한 사진을 유지했습니다. 이 사진만 다시 시도할 수 있습니다.")+(if(remaining>0) "\n남은 ${remaining}장은 등록하지 않았습니다. 사진 목록 확인 후 다시 선택해 주세요." else ""))
                         .setNegativeButton("나중에",null)
                     if(started) retry.setPositiveButton("등록된 사진 확인") { _,_ -> openSiteAction(request.company.id,request.siteId,"gallery",request.type) }
-                    else retry.setPositiveButton("이 사진 다시 시도") { _,_ -> uploadReportPhoto(request,uri) }
+                    else retry.setPositiveButton("이 사진 다시 시도") { _,_ -> photoBatchCompleted=0;photoBatchTotal=1;uploadReportPhoto(request,uri) }
                     retry.show()
                 }
               }
