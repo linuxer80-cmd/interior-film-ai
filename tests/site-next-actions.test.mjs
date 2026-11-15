@@ -15,6 +15,12 @@ test('missing data is unknown, never misrepresented as unassigned or unregistere
 test('missing dates take priority and no assignment/material task is invented', () => {
   assert.deepEqual(ids({...base(), schedule: {dates: [], assignments: []}}), ['date']);
 });
+test('consulting sites lead to the quotation and chat without requiring a construction date', () => {
+  const actions=siteNextActions({site:{status:'consulting'},today});
+  assert.deepEqual(actions.map(a=>a.menu),['quote','chat']);
+  assert.deepEqual(ids({...base(),site:{status:'consulting'},schedule:{dates:[],assignments:[]}}),['consultation-quote','consultation-chat']);
+  assert.deepEqual(ids({...base(),site:{status:'consulting'},report:{hasReport:true,review:{status:'pending'}}}),['review']);
+});
 test('daily gaps are not work days, but each real upcoming day needs a leader', () => {
   assert.deepEqual(ids(base()), ['today']);
   const value = base(); value.schedule.assignments.pop();
