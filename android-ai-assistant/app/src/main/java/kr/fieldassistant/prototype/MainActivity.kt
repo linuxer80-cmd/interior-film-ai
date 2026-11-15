@@ -3197,8 +3197,11 @@ class MainActivity : Activity() {
                 val uploadBytes=if(bytes.size>4*1024*1024) withContext(Dispatchers.IO) { compressSitePhoto(bytes) } else bytes
                 if(uploadBytes!==bytes) mime="image/jpeg"
                 if(epoch!=sessionEpoch || account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { photoBatchActive=false;pendingReportPhotos.clear();return@launch }
+                val pending=JSONObject().put("company",request.company.id).put("site",request.siteId).put("name",request.siteName).put("type",request.type)
+                check(getSharedPreferences("photo_upload_"+request.uid,Context.MODE_PRIVATE).edit().putString("pending",pending.toString()).commit()) { "사진 전송 상태를 저장하지 못했습니다." }
                 started=true
                 val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,uploadBytes,mime,request.company.role=="관리자")
+                getSharedPreferences("photo_upload_"+request.uid,Context.MODE_PRIVATE).edit().remove("pending").commit()
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
                     photoBatchCompleted++
                     val next=pendingReportPhotos.pollFirst()
@@ -4757,6 +4760,7 @@ class MainActivity : Activity() {
                 state?.data==null -> today.addView(text("오늘 현장을 확인하고 있습니다.",14f))
                 else -> {
                     val briefing=state.data
+                    today.addView(text("마지막 확인: "+SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(state.loadedAt)),12f,false,Color.rgb(89,111,96)))
                     DailyAssistant.highlights(briefing).take(3).forEach { today.addView(text(it,14f)) }
                     briefing.sites.take(2).forEach { site ->
                         val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(10),dp(12),dp(10));background=bg(Color.rgb(244,248,244),14) }
@@ -4790,6 +4794,13 @@ class MainActivity : Activity() {
             if(dailyExpanded && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
         }
         if(uid!=null) {
+            val uploadPrefs=getSharedPreferences("photo_upload_"+uid,Context.MODE_PRIVATE)
+            val pendingPhoto=try { JSONObject(uploadPrefs.getString("pending",null) ?: "") } catch(_:Exception) { null }
+            if(pendingPhoto!=null && pendingPhoto.optString("company")==company?.id) {
+                body.addView(text("사진 등록 결과 확인 필요 · ${pendingPhoto.optString("name")}\n앱이 종료되었거나 연결이 끊겼을 수 있습니다. 다시 올리기 전에 사진 목록을 확인해 주세요.",13f,true))
+                addButton(body,"등록된 사진 확인",false) { openSiteAction(pendingPhoto.optString("company"),pendingPhoto.optString("site"),"gallery",pendingPhoto.optString("type","all")) }
+                addButton(body,"사진 확인 완료",false) { uploadPrefs.edit().remove("pending").apply();render() }
+            }
             val bgPrefs=BackgroundCalls.resultPrefs(applicationContext,uid)
             val last=bgPrefs.getLong("last_successful_scan_at",0L)
             val scanError=bgPrefs.getString("last_scan_error","").orEmpty()
@@ -4801,6 +4812,7 @@ class MainActivity : Activity() {
                 else -> "녹음 폴더 연결됨"
             }
             val checked=if(last>0) SimpleDateFormat("MM월 dd일 HH:mm",Locale.KOREA).format(Date(last)) else "아직 확인 기록 없음"
+            if(folder()!=null && last>0 && System.currentTimeMillis()-last>60*60*1000L) body.addView(text("녹음 폴더를 한동안 확인하지 못했습니다. 폴더 연결과 휴대전화 배터리 설정을 확인해 주세요.",13f))
             body.addView(text("통화 확인 · $status\n마지막 폴더 확인: $checked",13f,true,Color.rgb(49,92,72)).apply {
                 setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223));isClickable=true;isFocusable=true
                 setOnClickListener { settingsOpen=true;showSetupDetails=true;render() }
