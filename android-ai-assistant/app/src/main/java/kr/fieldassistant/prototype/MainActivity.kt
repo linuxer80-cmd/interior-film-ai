@@ -4709,10 +4709,15 @@ class MainActivity : Activity() {
                         val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(10),dp(12),dp(10));background=bg(Color.rgb(244,248,244),14) }
                         card.addView(text(site.name,16f,true))
                         card.addView(text(site.work.ifBlank { "시공 내용을 확인해 주세요." },13f).apply { maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END })
-                        addButton(card,"현장 열기",false) {
-                            if(sitePhotoSessionValid(uid,company) && state.date==ScheduleDates.today()) lookupSites(AssistantRequests.Request("detail"),site.id)
-                            else { message("오늘 일정을 다시 확인해 주세요.");loadDailyAssistant(true);render() }
+                        fun validToday():Boolean {
+                            if(!sitePhotoSessionValid(uid,company)) { message("계정과 업체를 다시 확인해 주세요.");return false }
+                            if(state.date!=ScheduleDates.today()) { message("오늘 일정을 다시 확인해 주세요.");loadDailyAssistant(true);render();return false }
+                            return true
                         }
+                        val quick=LinearLayout(this)
+                        quick.addView(button("현장 열기",false) { if(validToday()) lookupSites(AssistantRequests.Request("detail"),site.id) },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(0,dp(6),dp(4),0) })
+                        quick.addView(button("길 안내",false) { if(validToday()) openSiteAction(company.id,site.id,"navigate") },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(dp(4),dp(6),0,0) })
+                        card.addView(quick)
                         today.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
                     }
                 }
