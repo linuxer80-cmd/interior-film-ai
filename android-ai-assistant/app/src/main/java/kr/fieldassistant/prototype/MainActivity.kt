@@ -4769,12 +4769,21 @@ class MainActivity : Activity() {
             }
         }
         candidate?.let { item ->
-            body.addView(text("새로운 상담 전화가 왔습니다.\n${item.optString("name")}\n현장에 등록할까요?",16f))
-            addButton(body,"상담 확인하고 답하기",false) { showRegistrationConfirmation(item.optString("id")) }
-            val choices=LinearLayout(this)
-            choices.addView(button("등록 안 함",false) { answerHome("등록 안 함") },LinearLayout.LayoutParams(0,dp(48),1f))
-            choices.addView(button("나중에",false) { answerHome("나중에") },LinearLayout.LayoutParams(0,dp(48),1f))
-            body.addView(choices)
+            val card=LinearLayout(this).apply {
+                orientation=LinearLayout.VERTICAL
+                setPadding(dp(16),dp(14),dp(16),dp(14))
+                background=bg(Color.WHITE,18,Color.rgb(225,229,220))
+            }
+            card.addView(text("새로운 상담 전화",16f,true))
+            card.addView(text("통화 내용을 확인하고 현장에 등록할 수 있습니다.",14f))
+            addButton(card,"상담 내용 확인",true) { showRegistrationConfirmation(item.optString("id")) }
+            addButton(card,"나중에 · 등록 안 함",false) {
+                AlertDialog.Builder(this).setTitle("상담 처리")
+                    .setItems(arrayOf("나중에 확인", "등록 안 함")) { _, choice ->
+                        if(displayedHomeConsultationId==item.optString("id")) answerHome(if(choice==0) "나중에" else "등록 안 함")
+                    }.setNegativeButton("취소",null).show()
+            }
+            body.addView(card,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(12),0,dp(8)) })
         }
         val expenseDraft=try { JSONObject(prefs.getString("chat_expense_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
         val filmDraft=try { JSONObject(prefs.getString("chat_film_pending",null) ?: "{}") } catch(_:Exception) { JSONObject() }
