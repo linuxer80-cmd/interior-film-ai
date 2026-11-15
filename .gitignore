@@ -5,3 +5,6 @@ android-ai-assistant/app/google-services.json
 android-ai-assistant/app/src/main/assets/ggml-small-q5_1.bin
 android-ai-assistant/vendor/whisper/
 android-ai-assistant/scripts/__pycache__/
+android-ai-assistant/.gradle/
+android-ai-assistant/app/.cxx/
+android-ai-assistant/app/build/
