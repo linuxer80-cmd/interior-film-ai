@@ -3170,14 +3170,14 @@ class MainActivity : Activity() {
         catch(_:Exception) { reportPhotoRequest=null;message("사진 선택창을 열지 못했습니다.") }
     }
     private fun uploadReportPhoto(request:ReportPhotoRequest,uri:Uri) {
-        if(workerActionBusy) { message("다른 작업이 진행 중입니다.");return }
-        if(account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
+        if(workerActionBusy) { pendingReportPhotos.clear();message("다른 작업이 진행 중입니다. 사진 목록을 확인한 후 남은 사진을 다시 선택해 주세요.");return }
+        if(account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { pendingReportPhotos.clear();message("계정과 업체가 변경되어 남은 사진 등록을 중단했습니다.");return }
         workerActionBusy=true;val epoch=sessionEpoch
         scope.launch {
             var started=false
             try {
                 var mime=contentResolver.getType(uri)?.lowercase(Locale.ROOT).orEmpty()
-                if(mime !in listOf("image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif")) { message("JPEG, PNG, WebP, HEIC 또는 HEIF 사진을 선택해 주세요.");return@launch }
+                require(mime in listOf("image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif")) { "JPEG, PNG, WebP, HEIC 또는 HEIF 사진을 선택해 주세요." }
                 val bytes=withContext(Dispatchers.IO) {
                     contentResolver.openInputStream(uri)?.use { input ->
                         val out=java.io.ByteArrayOutputStream();val buf=ByteArray(65536);var total=0
@@ -3188,7 +3188,7 @@ class MainActivity : Activity() {
                 check(bytes.isNotEmpty()) { "빈 사진 파일은 등록할 수 없습니다." }
                 val uploadBytes=if(bytes.size>4*1024*1024) withContext(Dispatchers.IO) { compressSitePhoto(bytes) } else bytes
                 if(uploadBytes!==bytes) mime="image/jpeg"
-                if(epoch!=sessionEpoch || account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) return@launch
+                if(epoch!=sessionEpoch || account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { pendingReportPhotos.clear();return@launch }
                 started=true
                 val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,uploadBytes,mime,request.company.role=="관리자")
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
@@ -3198,8 +3198,8 @@ class MainActivity : Activity() {
                         message(response.optString("message").ifBlank { "사진을 등록했습니다." }+(if(request.fromGallery) "" else " 완료보고는 아직 제출되지 않았습니다."))
                         if(request.fromGallery) handler.post { if(sitePhotoSessionValid(request.uid,request.company)) requestSitePhotoPage(request.uid,request.company,request.siteId,request.siteName,request.type,0) }
                     }
-                }
-            } catch(e:CancellationException) { throw e }
+                } else pendingReportPhotos.clear()
+            } catch(e:CancellationException) { pendingReportPhotos.clear();throw e }
               catch(e:Exception) {
                 val remaining=pendingReportPhotos.size;pendingReportPhotos.clear()
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
