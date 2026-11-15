@@ -398,11 +398,14 @@ class MainActivity : Activity() {
         }
         if(requestCode==1006) {
             val request=reportPhotoRequest;reportPhotoRequest=null
-            val uri=data?.data
-            if(resultCode==RESULT_OK && request!=null && uri?.scheme=="content" && account?.userId==request.uid && selectedCompany()?.id==request.company.id && selectedCompany()?.role==request.company.role) {
+            val uris=mutableListOf<Uri>()
+            data?.clipData?.let { clips -> for(i in 0 until clips.itemCount) clips.getItemAt(i)?.uri?.let(uris::add) }
+            if(uris.isEmpty()) data?.data?.let(uris::add)
+            if(resultCode==RESULT_OK && request!=null && uris.isNotEmpty() && uris.all { it.scheme=="content" } && account?.userId==request.uid && selectedCompany()?.id==request.company.id && selectedCompany()?.role==request.company.role) {
+                if(uris.size>10) { message("사진은 한 번에 최대 10장까지 선택할 수 있습니다.");return }
                 AlertDialog.Builder(this).setTitle("현장 사진 등록")
-                    .setMessage("${request.siteName} 현장에 ${when(request.type) { "request" -> "고객 요청"; "after" -> "시공 완료"; else -> "시공 전" }} 사진 1장을 등록합니다. 계속할까요?")
-                    .setNegativeButton("취소",null).setPositiveButton("사진 등록") { _,_ -> uploadReportPhoto(request,uri) }.show()
+                    .setMessage("${request.siteName} 현장에 ${when(request.type) { "request" -> "고객 요청"; "after" -> "시공 완료"; else -> "시공 전" }} 사진 ${uris.size}장을 등록합니다. 계속할까요?")
+                    .setNegativeButton("취소",null).setPositiveButton("사진 등록") { _,_ -> pendingReportPhotos.clear();pendingReportPhotos.addAll(uris.drop(1));uploadReportPhoto(request,uris.first()) }.show()
             }
             return
         }
@@ -3128,11 +3131,42 @@ class MainActivity : Activity() {
         }
     }
     private data class ReportPhotoRequest(val uid:String,val company:CompanyAccess,val siteId:String,val siteName:String,val type:String,val fromGallery:Boolean=false)
+    private fun compressSitePhoto(bytes:ByteArray):ByteArray {
+        val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
+        BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+        require(bounds.outWidth>0 && bounds.outHeight>0 && bounds.outWidth.toLong()*bounds.outHeight<=100_000_000L) { "사진 크기 또는 형식을 확인할 수 없습니다." }
+        var sample=1
+        while(maxOf(bounds.outWidth,bounds.outHeight)/sample>2560) sample*=2
+        val original=BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply { inSampleSize=sample }) ?: error("이 사진은 기기에서 크기를 줄일 수 없습니다. 다른 사진을 선택해 주세요.")
+        var rotated:Bitmap?=null
+        try {
+            val orientation=try { android.media.ExifInterface(java.io.ByteArrayInputStream(bytes)).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION,android.media.ExifInterface.ORIENTATION_NORMAL) } catch(_:Exception) { android.media.ExifInterface.ORIENTATION_NORMAL }
+            val matrix=android.graphics.Matrix()
+            when(orientation) {
+                android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f,1f)
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+                android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f,-1f)
+                android.media.ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.setRotate(90f);matrix.postScale(-1f,1f) }
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+                android.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.setRotate(270f);matrix.postScale(-1f,1f) }
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(270f)
+            }
+            if(!matrix.isIdentity) rotated=Bitmap.createBitmap(original,0,0,original.width,original.height,matrix,true)
+            val image=rotated ?: original
+            for(quality in listOf(90,80,70,60,50)) {
+                val out=java.io.ByteArrayOutputStream()
+                check(image.compress(Bitmap.CompressFormat.JPEG,quality,out)) { "사진을 준비하지 못했습니다." }
+                if(out.size()<=4*1024*1024) return out.toByteArray()
+            }
+            error("사진 용량을 줄이지 못했습니다. 다른 사진을 선택해 주세요.")
+        } finally { if(rotated!==original) rotated?.recycle();original.recycle() }
+    }
     private var reportPhotoRequest:ReportPhotoRequest?=null
+    private val pendingReportPhotos=java.util.ArrayDeque<Uri>()
     private fun pickReportPhoto(request:ReportPhotoRequest) {
         if(account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
         reportPhotoRequest=request
-        try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),1006) }
+        try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),1006) }
         catch(_:Exception) { reportPhotoRequest=null;message("사진 선택창을 열지 못했습니다.") }
     }
     private fun uploadReportPhoto(request:ReportPhotoRequest,uri:Uri) {
@@ -3142,28 +3176,35 @@ class MainActivity : Activity() {
         scope.launch {
             var started=false
             try {
-                val mime=contentResolver.getType(uri)?.lowercase(Locale.ROOT).orEmpty()
+                var mime=contentResolver.getType(uri)?.lowercase(Locale.ROOT).orEmpty()
                 if(mime !in listOf("image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif")) { message("JPEG, PNG, WebP, HEIC 또는 HEIF 사진을 선택해 주세요.");return@launch }
                 val bytes=withContext(Dispatchers.IO) {
                     contentResolver.openInputStream(uri)?.use { input ->
                         val out=java.io.ByteArrayOutputStream();val buf=ByteArray(65536);var total=0
-                        while(true) { val n=input.read(buf);if(n<0) break;total+=n;check(total<=4*1024*1024) { "사진은 4MB 이하만 등록할 수 있습니다. 사진 크기를 줄인 후 다시 선택해 주세요." };out.write(buf,0,n) }
+                        while(true) { val n=input.read(buf);if(n<0) break;total+=n;check(total<=32*1024*1024) { "사진이 너무 큽니다. 32MB 이하 사진을 선택해 주세요." };out.write(buf,0,n) }
                         out.toByteArray()
                     } ?: error("선택한 사진을 읽지 못했습니다.")
                 }
                 check(bytes.isNotEmpty()) { "빈 사진 파일은 등록할 수 없습니다." }
+                val uploadBytes=if(bytes.size>4*1024*1024) withContext(Dispatchers.IO) { compressSitePhoto(bytes) } else bytes
+                if(uploadBytes!==bytes) mime="image/jpeg"
                 if(epoch!=sessionEpoch || account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) return@launch
                 started=true
-                val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,bytes,mime,request.company.role=="관리자")
+                val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,uploadBytes,mime,request.company.role=="관리자")
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
-                    message(response.optString("message").ifBlank { "사진을 등록했습니다." }+(if(request.fromGallery) "" else " 완료보고는 아직 제출되지 않았습니다."))
-                    if(request.fromGallery) handler.post { if(sitePhotoSessionValid(request.uid,request.company)) requestSitePhotoPage(request.uid,request.company,request.siteId,request.siteName,request.type,0) }
+                    val next=pendingReportPhotos.pollFirst()
+                    if(next!=null) { message("사진을 등록했습니다. 남은 사진 ${pendingReportPhotos.size+1}장 처리 중");handler.post { uploadReportPhoto(request,next) } }
+                    else {
+                        message(response.optString("message").ifBlank { "사진을 등록했습니다." }+(if(request.fromGallery) "" else " 완료보고는 아직 제출되지 않았습니다."))
+                        if(request.fromGallery) handler.post { if(sitePhotoSessionValid(request.uid,request.company)) requestSitePhotoPage(request.uid,request.company,request.siteId,request.siteName,request.type,0) }
+                    }
                 }
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) {
+                val remaining=pendingReportPhotos.size;pendingReportPhotos.clear()
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
                     val retry=AlertDialog.Builder(this@MainActivity).setTitle(if(started) "사진 등록 결과 확인 필요" else "사진 전송 전 오류")
-                        .setMessage((e.message ?: "연결 상태를 확인해 주세요.")+if(started) "\n중복 등록을 막기 위해 먼저 등록된 사진을 확인해 주세요." else "\n선택한 사진을 유지했습니다. 이 사진만 다시 시도할 수 있습니다.")
+                        .setMessage((e.message ?: "연결 상태를 확인해 주세요.")+(if(started) "\n중복 등록을 막기 위해 먼저 등록된 사진을 확인해 주세요." else "\n선택한 사진을 유지했습니다. 이 사진만 다시 시도할 수 있습니다.")+(if(remaining>0) "\n남은 ${remaining}장은 등록하지 않았습니다. 사진 목록 확인 후 다시 선택해 주세요." else ""))
                         .setNegativeButton("나중에",null)
                     if(started) retry.setPositiveButton("등록된 사진 확인") { _,_ -> openSiteAction(request.company.id,request.siteId,"gallery",request.type) }
                     else retry.setPositiveButton("이 사진 다시 시도") { _,_ -> uploadReportPhoto(request,uri) }
@@ -4245,6 +4286,7 @@ class MainActivity : Activity() {
                     addButton(card,if(company.role=="관리자" && site.reportStatus=="pending") "완료보고 검토" else if(company.role=="관리자") "일정 · 배정 확인" else "길 안내",true) { action(if(company.role=="관리자" && site.reportStatus=="pending") "report" else if(company.role=="관리자") "schedule" else "navigate") }
                     actions("현장 상세",{ if(validToday()) lookupSites(AssistantRequests.Request("detail"),site.id) },"길 안내",{ action("navigate") })
                     actions("자재 확인",{ action("materials") },if(company.role=="시공자") "현장 마무리" else "시공자 배정",{ action(if(company.role=="시공자") "wrap_up" else "schedule") })
+                    actions("전화",{ action("phone") },"현장 사진",{ action("gallery") })
                     addButton(details,"팀원과 채팅",false) { action("team_chat") }
                     card.addView(details)
                     toggle.contentDescription="${site.name} 현장 할 일 펼치기"
@@ -4718,6 +4760,11 @@ class MainActivity : Activity() {
                         quick.addView(button("현장 열기",false) { if(validToday()) lookupSites(AssistantRequests.Request("detail"),site.id) },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(0,dp(6),dp(4),0) })
                         quick.addView(button("길 안내",false) { if(validToday()) openSiteAction(company.id,site.id,"navigate") },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(dp(4),dp(6),0,0) })
                         card.addView(quick)
+                        addButton(card,"전화 · 사진 · 팀 채팅",false) {
+                            if(validToday()) AlertDialog.Builder(this).setTitle(site.name).setItems(arrayOf("전화", "현장 사진", "팀 채팅")) { _,index ->
+                                if(validToday()) openSiteAction(company.id,site.id,arrayOf("phone","gallery","team_chat")[index])
+                            }.setNegativeButton("닫기",null).show()
+                        }
                         today.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
                     }
                 }
@@ -4727,6 +4774,7 @@ class MainActivity : Activity() {
                 if(dailyExpanded && (state==null || state.error)) loadDailyAssistant(true)
                 render()
             }
+            if(state?.data!=null && !state.loading) addButton(today,"오늘 일정 새로고침",false) { loadDailyAssistant(true);render() }
             body.addView(today,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
             if(dailyExpanded && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
         }
@@ -4746,6 +4794,9 @@ class MainActivity : Activity() {
                 setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223));isClickable=true;isFocusable=true
                 setOnClickListener { settingsOpen=true;showSetupDetails=true;render() }
             },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+            if(folder()!=null) addButton(body,"새 녹음 지금 확인",false) { scanFolder();message("녹음 폴더 확인을 요청했습니다. 분석에는 시간이 걸릴 수 있습니다.") }
+            if(folder()==null) addButton(body,"녹음 폴더 연결하기",false) { settingsOpen=true;showSetupDetails=true;render() }
+            if(!notificationsEnabled()) addButton(body,"알림 설정 확인",false) { openNotificationSettings() }
             val failed=records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" && list.optJSONObject(it)?.optString("site_id").orEmpty().isBlank() } }
             if(failed>0) addButton(body,"분석 실패 ${failed}건 확인",false) { showFailedRecordings() }
         }
@@ -4935,6 +4986,7 @@ class MainActivity : Activity() {
                 else -> "등록 전 확인"
             }
             summary.addView(text(status,12f,true,Color.rgb(49,92,72)))
+            summary.addView(text("진행 단계 · 녹음 확인 → 분석 → 상담 확인 → 현장 등록\n현재: $status",13f))
             summary.addView(text(when {
                 item.optString("site_id").isNotBlank() -> "서버에 저장되었습니다. 아래에서 등록 현장을 열 수 있습니다."
                 id in savingRegistrations -> "서버 저장 결과를 확인하고 있습니다. 중복으로 등록하지 마세요."
@@ -4947,6 +4999,7 @@ class MainActivity : Activity() {
                 summary.addView(text(label,12f,false,Color.rgb(108,119,111)).apply { setPadding(0,dp(8),0,dp(2)) })
                 summary.addView(text(value,15f).apply { setTextIsSelectable(true) })
             }
+            if(reg==null && item.optString("site_id").isBlank() && selectedCompany()?.role=="관리자" && item.optString("chat_company")==selectedCompany()?.id) addButton(summary,"등록 내용 수정",false) { editChatDraft(id) }
             body.addView(summary,0,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,dp(16),0,dp(4)) })
         }
         if(selectedCompany()?.role=="관리자" && item.optString("chat_company")==selectedCompany()?.id) {
