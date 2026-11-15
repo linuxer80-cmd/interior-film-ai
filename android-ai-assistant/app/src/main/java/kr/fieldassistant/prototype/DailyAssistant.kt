@@ -17,7 +17,7 @@ internal object DailyAssistant {
         }.map { row ->
             Site(value(row,"id").ifBlank { value(row,"site_id") },value(row,"site_name").ifBlank { "이름 없는 현장" },
                 listOf(value(row,"address"),value(row,"address_detail")).filter { it.isNotBlank() }.joinToString(" "),
-                value(row,"work_description"),value(row,"report_review_status"))
+                value(row,"work_description"),if(row.has("report_review_status")) value(row,"report_review_status") else "unknown")
         }.sortedBy { it.name }
         val count=if(owner) (0 until scoped.length()).count { scoped.optJSONObject(it)?.optString("status")=="consulting" } else null
         return Briefing(sites,count)
