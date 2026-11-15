@@ -4648,7 +4648,7 @@ class MainActivity : Activity() {
         }
     }
     private var homeScrollPosition=0
-    private var homeRenderedMessageCount=0
+    private var homeRenderedMessageCount=-1
     private fun renderHomeChat() {
         val candidate=latestConsultation()
         val key=listOf("home",followUpItems().map { it.optString("id")+it.optJSONObject("follow_up").toString() },account?.userId?.let { NotificationInbox.unread(this,it) },account?.userId,selectedCompany()?.id,prefs.getString("home_chat","[]"),
@@ -4693,6 +4693,38 @@ class MainActivity : Activity() {
         scroll.addView(body);page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val company=selectedCompany();val uid=account?.userId
         val state=dailyState?.takeIf { it.uid==uid && it.company==company?.id && it.role==company?.role && it.date==ScheduleDates.today() }
+        if(company!=null && uid!=null) {
+            val today=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
+            today.addView(text("오늘 할 일 · 현장",18f,true))
+            when {
+                state?.error==true -> {
+                    today.addView(text("오늘 현장을 불러오지 못했습니다.",14f))
+                    addButton(today,"다시 확인",false) { loadDailyAssistant(true);render() }
+                }
+                state?.data==null -> today.addView(text("오늘 현장을 확인하고 있습니다.",14f))
+                else -> {
+                    val briefing=state.data
+                    DailyAssistant.highlights(briefing).take(3).forEach { today.addView(text(it,14f)) }
+                    briefing.sites.take(2).forEach { site ->
+                        val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(10),dp(12),dp(10));background=bg(Color.rgb(244,248,244),14) }
+                        card.addView(text(site.name,16f,true))
+                        card.addView(text(site.work.ifBlank { "시공 내용을 확인해 주세요." },13f).apply { maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END })
+                        addButton(card,"현장 열기",false) {
+                            if(sitePhotoSessionValid(uid,company) && state.date==ScheduleDates.today()) lookupSites(AssistantRequests.Request("detail"),site.id)
+                            else { message("오늘 일정을 다시 확인해 주세요.");loadDailyAssistant(true);render() }
+                        }
+                        today.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+                    }
+                }
+            }
+            addButton(today,if(dailyExpanded) "상세 접기" else "오늘 할 일 전체 보기",false) {
+                dailyExpanded=!dailyExpanded;openDailyOnReady=dailyExpanded
+                if(dailyExpanded && (state==null || state.error)) loadDailyAssistant(true)
+                render()
+            }
+            body.addView(today,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
+            if(dailyExpanded && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
+        }
         if(uid!=null) {
             val bgPrefs=BackgroundCalls.resultPrefs(applicationContext,uid)
             val last=bgPrefs.getLong("last_successful_scan_at",0L)
@@ -4712,19 +4744,6 @@ class MainActivity : Activity() {
             val failed=records().let { list -> (0 until list.length()).count { list.optJSONObject(it)?.optString("status")=="분석 실패" && list.optJSONObject(it)?.optString("site_id").orEmpty().isBlank() } }
             if(failed>0) addButton(body,"분석 실패 ${failed}건 확인",false) { showFailedRecordings() }
         }
-        if(company!=null && uid!=null) {
-            val tasks=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=bg(Color.WHITE,16,Color.rgb(222,232,223)) }
-            tasks.addView(text("오늘 업무 브리핑",18f,true))
-            if(state?.data!=null) DailyAssistant.highlights(state.data).take(if(dailyExpanded) 3 else 1).forEach { tasks.addView(text(it,14f)) }
-            else tasks.addView(text(if(state?.error==true) "브리핑을 불러오지 못했습니다. 다시 확인해 주세요." else "오늘 업무를 확인하고 있습니다.",14f))
-            addButton(tasks,if(dailyExpanded) "상세 접기" else "오늘 할 일 보기",false) {
-                dailyExpanded=!dailyExpanded;openDailyOnReady=dailyExpanded
-                if(dailyExpanded && (state==null || state.error)) loadDailyAssistant(true)
-                render()
-            }
-            body.addView(tasks,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
-        }
-        if(dailyExpanded && company!=null && uid!=null && state!=null) body.addView(dailyCard(company,uid,state),LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
         val conversationHeading=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         conversationHeading.addView(text("비서와 대화",18f,true),LinearLayout.LayoutParams(0,-2,1f))
         conversationHeading.addView(text("대화 목록 ›",13f,true,Color.rgb(35,84,59)).apply {
@@ -4852,7 +4871,7 @@ class MainActivity : Activity() {
             item.setOnClickListener { action() }
             navigation.addView(item,LinearLayout.LayoutParams(0,dp(48),1f))
         }
-        nav("비서",android.R.drawable.ic_dialog_info,true) { scroll.smoothScrollTo(0,body.bottom) }
+        nav("비서",android.R.drawable.ic_dialog_info,true) { scroll.smoothScrollTo(0,0) }
         nav("현장",android.R.drawable.ic_menu_mylocation) { lookupSites(AssistantRequests.Request("sites")) }
         nav("채팅",android.R.drawable.ic_dialog_email) {
             if(isOwner) AlertDialog.Builder(this).setTitle("채팅").setItems(arrayOf("고객 채팅","오늘 현장 팀 채팅")) { _,which ->
@@ -4866,7 +4885,7 @@ class MainActivity : Activity() {
         page.requestApplyInsets()
         scroll.post {
             if(openDailyOnReady && state!=null && !state.loading) { scroll.fullScroll(View.FOCUS_UP);openDailyOnReady=false }
-            else if(messages.length()>homeRenderedMessageCount) scroll.fullScroll(View.FOCUS_DOWN)
+            else if(homeRenderedMessageCount>=0 && messages.length()>homeRenderedMessageCount) scroll.fullScroll(View.FOCUS_DOWN)
             else scroll.scrollTo(0,restoreHomeY)
             homeRenderedMessageCount=messages.length()
         }
@@ -5089,7 +5108,7 @@ class MainActivity : Activity() {
         activeNativeChats?.close();activeNativeChats=null
         val pushUser=account?.userId
         val pushDevice=ChatPushRegistration.deactivate(applicationContext)
-        chatId=null;chatInput="";settingsOpen=false;homeInput="";homeScrollPosition=0;homeRenderedMessageCount=0;lookupBusy=false;briefingRequested=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
+        chatId=null;chatInput="";settingsOpen=false;homeInput="";homeScrollPosition=0;homeRenderedMessageCount=-1;lookupBusy=false;briefingRequested=false;dailyState=null;openDailyOnReady=false;dailyExpanded=false
         sessionEpoch++;analysisJob?.cancel();analysisJob=null;offlineQueueJob?.cancel();offlineQueueJob=null;offlineQueue.clear();offlineQueued.clear()
         ScheduleJobs.stop(applicationContext);BackgroundCalls.stop(applicationContext);detachResults();reviewId=null;reviewUser=null;reviewDecision=null;forcedReviewId=null;modelChecked=false
         simpleSetup=false;setupBusy=false;showSetupDetails=false
