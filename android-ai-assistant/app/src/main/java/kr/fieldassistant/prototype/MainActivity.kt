@@ -812,7 +812,10 @@ class MainActivity : Activity() {
         val description=(0 until candidates.length()).mapNotNull { candidates.optJSONObject(it) }.joinToString("\n") { candidateLabel(it) }
         chatMessage(id,if(candidates.length()==1) "같은 현장일 수 있는 기록이 있습니다.\n$description\n\n이 현장에 이어서 등록할까요?" else "같은 현장일 수 있는 기록이 ${candidates.length()}개 있습니다.\n$description\n\n아래에서 현장을 선택해 주세요. 선택 후 다시 확인하겠습니다.")
     }
-    private fun candidateLabel(candidate: JSONObject): String = listOf(candidate.optString("site_name").ifBlank { "이름 없는 현장" },candidate.optString("address"),candidate.optString("customer_name")).filter { it.isNotBlank() && it!="null" }.joinToString(" · ")
+    private fun candidateLabel(candidate: JSONObject): String {
+        fun field(key:String)=candidate.optString(key).takeUnless { it.isBlank() || it=="null" } ?: "미확인"
+        return "${field("site_name")} · 고객: ${field("customer_name")} · 주소: ${field("address")}"
+    }
     private fun pauseConsultation(id: String, declined: Boolean): String? {
         val item=recordById(id) ?: return null
         if(item.optString("site_id").isNotBlank()) return null
