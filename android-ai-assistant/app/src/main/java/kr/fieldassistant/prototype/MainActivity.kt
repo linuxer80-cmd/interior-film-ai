@@ -401,7 +401,7 @@ class MainActivity : Activity() {
             val uri=data?.data
             if(resultCode==RESULT_OK && request!=null && uri?.scheme=="content" && account?.userId==request.uid && selectedCompany()?.id==request.company.id && selectedCompany()?.role==request.company.role) {
                 AlertDialog.Builder(this).setTitle("현장 사진 등록")
-                    .setMessage("${request.siteName} 현장에 ${if(request.type=="after") "시공 완료" else "시공 전"} 사진 1장을 등록합니다. 계속할까요?")
+                    .setMessage("${request.siteName} 현장에 ${when(request.type) { "request" -> "고객 요청"; "after" -> "시공 완료"; else -> "시공 전" }} 사진 1장을 등록합니다. 계속할까요?")
                     .setNegativeButton("취소",null).setPositiveButton("사진 등록") { _,_ -> uploadReportPhoto(request,uri) }.show()
             }
             return
@@ -3050,6 +3050,17 @@ class MainActivity : Activity() {
                 if(value!=type) requestSitePhotoPage(uid,company,siteId,siteName,value,0,box.tag as? AlertDialog)
             } })
         };tabs.addView(bar);box.addView(tabs)
+        addButton(box,"＋ 사진 등록",true) {
+            if(!sitePhotoSessionValid(uid,company)) return@addButton
+            val labels=if(company.role=="관리자") arrayOf("고객 요청 사진","시공 전 사진","시공 완료 사진") else arrayOf("시공 전 사진","시공 완료 사진")
+            val types=if(company.role=="관리자") arrayOf("request","before","after") else arrayOf("before","after")
+            AlertDialog.Builder(this).setTitle("어떤 사진인가요?").setItems(labels) { _,index ->
+                if(sitePhotoSessionValid(uid,company)) {
+                    (box.tag as? AlertDialog)?.dismiss()
+                    pickReportPhoto(ReportPhotoRequest(uid,company,siteId,siteName,types[index],true))
+                }
+            }.setNegativeButton("취소",null).show()
+        }
         box.addView(text("${page+1}쪽 · 사진을 누르면 크게 볼 수 있습니다.",13f))
         if(photos.length()==0) box.addView(text("이 현장에 표시할 사진이 없습니다.",16f))
         data class PendingPhoto(val image:ImageView,val label:TextView,val title:String,val url:String)
@@ -3116,7 +3127,7 @@ class MainActivity : Activity() {
             if(bitmap!=null) image.setImageBitmap(bitmap) else message("사진을 열지 못했습니다. 목록을 다시 열어 주세요.")
         }
     }
-    private data class ReportPhotoRequest(val uid:String,val company:CompanyAccess,val siteId:String,val siteName:String,val type:String)
+    private data class ReportPhotoRequest(val uid:String,val company:CompanyAccess,val siteId:String,val siteName:String,val type:String,val fromGallery:Boolean=false)
     private var reportPhotoRequest:ReportPhotoRequest?=null
     private fun pickReportPhoto(request:ReportPhotoRequest) {
         if(account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) { message("계정과 업체를 다시 확인해 주세요.");return }
@@ -3143,8 +3154,11 @@ class MainActivity : Activity() {
                 check(bytes.isNotEmpty()) { "빈 사진 파일은 등록할 수 없습니다." }
                 if(epoch!=sessionEpoch || account?.userId!=request.uid || selectedCompany()?.id!=request.company.id || selectedCompany()?.role!=request.company.role) return@launch
                 started=true
-                val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,bytes,mime)
-                if(epoch==sessionEpoch) message(response.optString("message").ifBlank { "사진을 등록했습니다." }+" 완료보고는 아직 제출되지 않았습니다.")
+                val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,bytes,mime,request.company.role=="관리자")
+                if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
+                    message(response.optString("message").ifBlank { "사진을 등록했습니다." }+(if(request.fromGallery) "" else " 완료보고는 아직 제출되지 않았습니다."))
+                    if(request.fromGallery) handler.post { if(sitePhotoSessionValid(request.uid,request.company)) requestSitePhotoPage(request.uid,request.company,request.siteId,request.siteName,request.type,0) }
+                }
             } catch(e:CancellationException) { throw e }
               catch(e:Exception) {
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {

@@ -895,19 +895,20 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
-    suspend fun uploadAssistantReportPhoto(expectedUser:String,companyId:String,siteId:String,type:String,bytes:ByteArray,mime:String):JSONObject {
+    suspend fun uploadAssistantReportPhoto(expectedUser:String,companyId:String,siteId:String,type:String,bytes:ByteArray,mime:String,owner:Boolean=false):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
-        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && type in listOf("before","after"))
+        require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && type in (if(owner) listOf("request","before","after") else listOf("before","after")))
         val ext=when(mime) { "image/jpeg","image/jpg" -> "jpg";"image/png" -> "png";"image/webp" -> "webp";"image/heic" -> "heic";"image/heif" -> "heif";else -> error("지원하지 않는 사진 형식입니다.") }
         require(bytes.isNotEmpty() && bytes.size<=4*1024*1024)
         val token=client.auth.currentAccessTokenOrNull() ?: error("로그인이 만료됐습니다.")
         return withContext(Dispatchers.IO) {
             val boundary="assistant-"+java.util.UUID.randomUUID().toString()
-            val c=SecureTransport.open("https://interior-film-ai.vercel.app/api/worker/site-photos")
+            val c=SecureTransport.open(if(owner) "https://interior-film-ai.vercel.app/api/assistant/site-photo-upload" else "https://interior-film-ai.vercel.app/api/worker/site-photos")
             try {
                 c.instanceFollowRedirects=false;c.requestMethod="POST";c.doOutput=true;c.connectTimeout=15000;c.readTimeout=90000
                 c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary)
+                if(owner) c.setRequestProperty("X-Assistant-Company",companyId)
                 c.outputStream.use { out ->
                     fun field(name:String,value:String) { out.write(("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n").toByteArray(Charsets.UTF_8)) }
                     field("siteId",siteId);field("photoType",type)
