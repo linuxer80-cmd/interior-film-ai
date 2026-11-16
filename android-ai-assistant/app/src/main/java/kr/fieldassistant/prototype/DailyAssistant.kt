@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 /** Read-only summaries; unknown or inaccessible data never becomes a completed task. */
 internal object DailyAssistant {
-    data class Site(val id:String,val name:String,val address:String,val work:String,val reportStatus:String)
+    data class Site(val id:String,val name:String,val address:String,val work:String,val reportStatus:String,val status:String="")
     data class Briefing(val sites:List<Site>,val consultations:Int?)
     private fun value(row:JSONObject,key:String)=row.optString(key).takeUnless { it=="null" }.orEmpty().trim()
     fun reportStatus(response:JSONObject):String {
@@ -23,7 +23,7 @@ internal object DailyAssistant {
         }.map { row ->
             Site(value(row,"id").ifBlank { value(row,"site_id") },value(row,"site_name").ifBlank { "이름 없는 현장" },
                 listOf(value(row,"address"),value(row,"address_detail")).filter { it.isNotBlank() }.joinToString(" "),
-                value(row,"work_description"),if(row.has("report_review_status")) value(row,"report_review_status") else "unknown")
+                value(row,"work_description"),if(row.has("report_review_status")) value(row,"report_review_status") else "unknown",value(row,"status"))
         }.sortedBy { it.name }
         val count=if(owner) (0 until scoped.length()).count { scoped.optJSONObject(it)?.optString("status")=="consulting" } else null
         return Briefing(sites,count)
