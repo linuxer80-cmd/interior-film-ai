@@ -895,7 +895,7 @@ internal class AccountAuth private constructor(context: Context) {
             } finally { c.disconnect() }
         }
     }
-    suspend fun uploadAssistantReportPhoto(expectedUser:String,companyId:String,siteId:String,type:String,bytes:ByteArray,mime:String,owner:Boolean=false):JSONObject {
+    suspend fun uploadAssistantReportPhoto(expectedUser:String,companyId:String,siteId:String,type:String,bytes:ByteArray,mime:String,owner:Boolean=false,description:String=""):JSONObject {
         val verified=verify()
         check(verified.userId==expectedUser && verified.companies.any { it.id==companyId }) { "계정 또는 업체를 확인해 주세요." }
         require(Regex("^[0-9a-fA-F-]{36}$").matches(siteId) && type in (if(owner) listOf("request","before","after") else listOf("before","after")))
@@ -911,7 +911,7 @@ internal class AccountAuth private constructor(context: Context) {
                 if(owner) c.setRequestProperty("X-Assistant-Company",companyId)
                 c.outputStream.use { out ->
                     fun field(name:String,value:String) { out.write(("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n").toByteArray(Charsets.UTF_8)) }
-                    field("siteId",siteId);field("photoType",type)
+                    field("siteId",siteId);field("photoType",type);field("description",description.take(200))
                     out.write(("--$boundary\r\nContent-Disposition: form-data; name=\"photos\"; filename=\"photo.$ext\"\r\nContent-Type: $mime\r\n\r\n").toByteArray(Charsets.UTF_8))
                     out.write(bytes);out.write(("\r\n--$boundary--\r\n").toByteArray(Charsets.UTF_8))
                 }
