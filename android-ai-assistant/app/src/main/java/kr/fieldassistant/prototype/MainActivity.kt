@@ -403,11 +403,15 @@ class MainActivity : Activity() {
             if(uris.isEmpty()) data?.data?.let(uris::add)
             if(resultCode==RESULT_OK && request!=null && uris.isNotEmpty() && uris.all { it.scheme=="content" } && account?.userId==request.uid && selectedCompany()?.id==request.company.id && selectedCompany()?.role==request.company.role) {
                 if(uris.size>10) { message("사진은 한 번에 최대 10장까지 선택할 수 있습니다.");return }
-                AlertDialog.Builder(this).setTitle("현장 사진 등록")
-                    .setMessage("${request.siteName} 현장에 ${when(request.type) { "request" -> "고객 요청"; "after" -> "시공 완료"; else -> "시공 전" }} 사진 ${uris.size}장을 등록합니다. 계속할까요?")
+                val photoTypes=if(request.company.role=="관리자") listOf("request","before","after") else listOf("before","after")
+                val typeNames=photoTypes.map { when(it) { "request" -> "고객 요청";"after" -> "시공 완료";else -> "시공 전" } }
+                val typeChoice=Spinner(this).apply { adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,typeNames);setSelection(photoTypes.indexOf(request.type).coerceAtLeast(0)) }
+                val memo=EditText(this).apply { hint="사진 메모 (선택)";filters=arrayOf(android.text.InputFilter.LengthFilter(200)) }
+                val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),0);addView(text("${request.siteName} · 사진 ${uris.size}장",16f,true));addView(typeChoice);addView(memo) }
+                AlertDialog.Builder(this).setTitle("현장 사진 등록").setView(form)
                     .setNegativeButton("취소",null).setPositiveButton("사진 등록") { _,_ ->
                         if(photoBatchActive || workerActionBusy) message("사진 또는 다른 작업이 진행 중입니다. 완료 후 다시 선택해 주세요.")
-                        else { photoBatchActive=true;photoBatchCompleted=0;photoBatchTotal=uris.size;pendingReportPhotos.clear();pendingReportPhotos.addAll(uris.drop(1));uploadReportPhoto(request,uris.first()) }
+                        else { val selected=request.copy(type=photoTypes[typeChoice.selectedItemPosition],description=memo.text.toString().trim());photoBatchActive=true;photoBatchCompleted=0;photoBatchTotal=uris.size;pendingReportPhotos.clear();pendingReportPhotos.addAll(uris.drop(1));uploadReportPhoto(selected,uris.first()) }
                     }.show()
             }
             return
@@ -3136,7 +3140,7 @@ class MainActivity : Activity() {
             if(bitmap!=null) image.setImageBitmap(bitmap) else message("사진을 열지 못했습니다. 목록을 다시 열어 주세요.")
         }
     }
-    private data class ReportPhotoRequest(val uid:String,val company:CompanyAccess,val siteId:String,val siteName:String,val type:String,val fromGallery:Boolean=false)
+    private data class ReportPhotoRequest(val uid:String,val company:CompanyAccess,val siteId:String,val siteName:String,val type:String,val fromGallery:Boolean=false,val description:String="")
     private fun compressSitePhoto(bytes:ByteArray):ByteArray {
         val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
         BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
@@ -3203,7 +3207,7 @@ class MainActivity : Activity() {
                 val pending=JSONObject().put("company",request.company.id).put("site",request.siteId).put("name",request.siteName).put("type",request.type)
                 check(getSharedPreferences("photo_upload_"+request.uid,Context.MODE_PRIVATE).edit().putString("pending",pending.toString()).commit()) { "사진 전송 상태를 저장하지 못했습니다." }
                 started=true
-                val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,uploadBytes,mime,request.company.role=="관리자")
+                val response=auth.uploadAssistantReportPhoto(request.uid,request.company.id,request.siteId,request.type,uploadBytes,mime,request.company.role=="관리자",request.description)
                 getSharedPreferences("photo_upload_"+request.uid,Context.MODE_PRIVATE).edit().remove("pending").commit()
                 if(epoch==sessionEpoch && sitePhotoSessionValid(request.uid,request.company)) {
                     photoBatchCompleted++
@@ -4769,6 +4773,8 @@ class MainActivity : Activity() {
                         val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(10),dp(12),dp(10));background=bg(Color.rgb(244,248,244),14) }
                         card.addView(text(site.name,16f,true))
                         card.addView(text(site.work.ifBlank { "시공 내용을 확인해 주세요." },13f).apply { maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END })
+                        val next=if(site.reportStatus=="pending" && isOwner) NextSiteAction.Action("완료보고 검토","report","제출된 완료보고를 확인하세요.") else NextSiteAction.suggest(site.status,isOwner)
+                        if(next!=null) card.addView(text("다음 작업 · ${next.title}",13f,true))
                         fun validToday():Boolean {
                             if(!sitePhotoSessionValid(uid,company)) { message("계정과 업체를 다시 확인해 주세요.");return false }
                             if(state.date!=ScheduleDates.today()) { message("오늘 일정을 다시 확인해 주세요.");loadDailyAssistant(true);render();return false }
@@ -4778,6 +4784,7 @@ class MainActivity : Activity() {
                         quick.addView(button("현장 열기",false) { if(validToday()) lookupSites(AssistantRequests.Request("detail"),site.id) },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(0,dp(6),dp(4),0) })
                         quick.addView(button("길 안내",false) { if(validToday()) openSiteAction(company.id,site.id,"navigate") },LinearLayout.LayoutParams(0,dp(48),1f).apply { setMargins(dp(4),dp(6),0,0) })
                         card.addView(quick)
+                        if(next!=null) addButton(card,next.title,false) { if(validToday()) openSiteAction(company.id,site.id,next.section) }
                         addButton(card,"전화 · 사진 · 팀 채팅",false) {
                             if(validToday()) AlertDialog.Builder(this).setTitle(site.name).setItems(arrayOf("전화", "현장 사진", "팀 채팅")) { _,index ->
                                 if(validToday()) openSiteAction(company.id,site.id,arrayOf("phone","gallery","team_chat")[index])
