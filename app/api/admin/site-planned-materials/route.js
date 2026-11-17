@@ -1,6 +1,6 @@
 import { normalizeFilmBrand, sameFilmBrand } from "../../../../lib/filmBrand.mjs";
 import { matchingFilmProducts } from "../../../../lib/matchingFilmProducts.mjs";
-import { resolveFilmType, filmCodeInfo } from "../../../../lib/hyundaiFilmCode";
+import { resolveFilmType, filmCodeInfo, sameFilmProduct } from "../../../../lib/hyundaiFilmCode";
 import { plannedDealerPrice } from "../../../../lib/plannedDealerPrice.mjs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -188,7 +188,7 @@ async function handle(request) {
 
       const type = resolveFilmType(normalizeFilmBrand(text("brand", 100)), text("product_code", 100), body.price_type);
       if (type.conflict || !["fire", "non_fire"].includes(type.resolvedType)) {
-        return json({ error: type.conflict ? "제품코드의 방염 구분과 선택한 구분이 다릅니다. G·F 코드와 방염 구분을 확인해주세요." : "방염 또는 비방염을 선택해주세요." }, 400);
+        return json({ error: type.conflict ? "제품코드의 방염 구분과 선택한 구분이 다릅니다. 제품번호와 방염·비방염 선택을 확인해주세요." : "방염 또는 비방염을 선택해주세요." }, 400);
       }
       values = {
         price_type: type.resolvedType,
@@ -255,7 +255,7 @@ async function handle(request) {
       // An exact approved alias is saved as the canonical code, never as a second product.
       if(values.film_product_id){
         const linked=products.find(p=>p.id===values.film_product_id);
-        if(linked && !products.some(p=>filmCodeInfo(values.brand,values.product_code).baseCode===p.product_code)) values.product_code=linked.product_code;
+        if(linked && !sameFilmProduct(values.brand,values.product_code,linked.brand,linked.product_code)) values.product_code=linked.product_code;
       }
     }
 
