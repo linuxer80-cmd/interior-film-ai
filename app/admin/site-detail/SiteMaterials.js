@@ -631,6 +631,7 @@ function PlannedSiteMaterials({ site }) {
             </label>
             </details>
 
+            {message && <p role="status" style={{ margin: 0, overflowWrap: "anywhere" }}>{message}</p>}
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 style={{

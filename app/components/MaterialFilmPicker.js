@@ -1,5 +1,5 @@
 "use client";
-import { receiptMatchesProduct, filmCodeInfo } from "../../lib/hyundaiFilmCode";
+import { selectedMaterialCode } from "../../lib/selectedMaterialCode.mjs";
 import { normalizeFilmBrand } from "../../lib/filmBrand.mjs";
 
 import { useEffect, useId, useState } from "react";
@@ -61,9 +61,7 @@ export default function MaterialFilmPicker({ value, onChange, disabled = false, 
         {products.map(product => <button key={product.id} type="button" disabled={disabled}
           aria-label={`${product.brand} ${product.product_code} ${product.product_name || ""} 선택`}
           onClick={() => {
-            const info=filmCodeInfo(product.brand,query);
-            const prefix = info.priceType!=="unknown" && receiptMatchesProduct({brand:product.brand,code:query},product) ? query[0].toUpperCase() : "";
-            onChange({ film_product_id: product.id, brand: normalizeFilmBrand(product.brand), product_code: prefix + product.product_code, product_name: product.product_name || "" });
+            onChange({ film_product_id: product.id, brand: normalizeFilmBrand(product.brand), product_code: selectedMaterialCode(product, query), product_name: product.product_name || "" });
             setChosen(product); setOpen(false);
           }}
           style={{ border: "1px solid #cbd5e1", borderRadius: 12, padding: 10, background: "#fff", color: "#172b3a", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
