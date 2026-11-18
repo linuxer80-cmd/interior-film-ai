@@ -19,7 +19,7 @@ test('approved report supplies the customer settlement when the contract is miss
  const state=customerStageState({...site,contract_amount:null},reports,reportBalance,'2026-10-26');
  assert.equal(state.amount,250000);assert.equal(state.vatAmount,25000);assert.equal(state.totalAmount,275000);assert.equal(state.outstanding,175000);
  assert.equal(customerStageState({...site,contract_amount:null},reports,{...reportBalance,paid:275000},'2026-10-26').settled,true);
- assert.equal(customerStageState(site,reports,reportBalance,'2026-10-26').amount,1000000);
+ assert.equal(customerStageState(site,reports,reportBalance,'2026-10-26').amount,250000);
  assert.equal(customerStageState({...site,contract_amount:null},[{review_status:'pending'}],reportBalance,'2026-10-26').amount,null);
  for(const value of [null,0,-1,'',undefined,'invalid'])assert.equal(customerStageState({...site,contract_amount:null},reports,{...reportBalance,supply_amount:value},'2026-10-26').amount,null);
 });
@@ -65,4 +65,11 @@ test('consultation message opens the same preparation page without claiming a co
  assert.ok(stageTemplate('consultation').includes('상담 후 확정'));
  assert.equal(stageTemplate('consultation').includes('일정이 확정되었습니다'),false);
  assert.equal(stageTemplate('consultation').includes('#{시공일}'),false);
+});
+
+test('final inspection overrides contract in customer notification amounts',()=>{
+ const s=customerStageState({...site,contract_amount:1400000},reports,{amount_source:'approved_report',supply_amount:1450000,confirmed:false,paid:null},'2026-11-18');
+ assert.equal(s.amount,1450000);assert.equal(s.vatAmount,145000);assert.equal(s.totalAmount,1595000);assert.equal(s.paid,null);assert.equal(s.outstanding,null);
+ const paid=customerStageState({...site,contract_amount:1400000},reports,{amount_source:'approved_report',supply_amount:1450000,confirmed:true,paid:500000},'2026-11-18');
+ assert.equal(paid.outstanding,1095000);
 });

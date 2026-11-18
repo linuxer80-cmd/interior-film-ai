@@ -106,3 +106,16 @@ test('customer trade debt keeps unknown balances out of totals while showing sco
  for(const role of ['anon','authenticated'])assert.equal((await db.query(`select has_function_privilege('${role}','customer_trade_receivables(uuid,uuid)','execute') ok`)).rows[0].ok,false);
  }finally{await db.close();}
 });
+
+test('final inspection takes precedence over contract without changing payment records',async()=>{
+ const {db}=await fixture();try{
+ await db.exec(sql('database/inspection_amount_final_priority.sql'));
+ await db.exec("update sites set contract_amount=1400000;update work_reports set approved_amount=1450000");
+ const get=async()=>(await db.query('select * from site_receivable_balances')).rows[0];
+ let row=await get();assert.equal(Number(row.supply_amount),1450000);assert.equal(Number(row.vat_amount),145000);assert.equal(Number(row.contract_amount),1595000);assert.equal(Number(row.paid),100000);assert.equal(Number(row.outstanding),1495000);assert.equal(Number(row.original_contract_amount),1400000);
+ await db.exec("update work_reports set review_status='pending'");
+ row=await get();assert.equal(row.amount_source,'contract');assert.equal(Number(row.contract_amount),1540000);
+ await db.exec("update work_reports set review_status='approved',approved_amount=null");
+ assert.equal(Number((await get()).contract_amount),1540000);
+ }finally{await db.close();}
+});

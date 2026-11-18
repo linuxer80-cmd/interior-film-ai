@@ -219,7 +219,7 @@ export default function SitePaymentQuick({ siteId, onChanged, onDraftState, onNa
             <h4>검수금액 수정</h4>
             <label>공급가액 (부가세 별도)<input type="number" inputMode="numeric" min="1" max="1000000000000" step="1" required disabled={disabled} value={amount} onChange={event => setAmount(event.target.value)} /></label>
             <p>부가세 (10%) · {/^\d+$/.test(amount) ? paymentWon(Math.round(Number(amount) / 10)) : "—"}<br/>합계 · {/^\d+$/.test(amount) ? paymentWon(Number(amount) + Math.round(Number(amount) / 10)) : "—"}</p>
-            <p className="hint">{site.amount_source === "contract" ? "계약금액이 있는 현장은 고객 정산에 계약금액을 우선 사용합니다." : "고객페이지 정산 금액에도 반영됩니다."}</p>
+            <p className="hint">검수금액을 최종 정산금액으로 사용하며, 고객페이지와 정산 안내에도 반영됩니다.</p>
             <button type="submit" disabled={disabled}>검수금액 저장</button>
             <button type="button" disabled={disabled} onClick={() => { setForm(""); setAmount(""); setError(""); }}>취소</button>
           </form>}
