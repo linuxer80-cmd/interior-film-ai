@@ -27,3 +27,9 @@ test('completion dispatch uses separate reservation and a duplicate never sends 
  const args={db,site:{id:'site'},company:{...company,id:'company'},message,config,actorId:'owner',fetcher};
  assert.equal((await dispatchSiteMessage(args)).status,'requested');assert.equal((await dispatchSiteMessage(args)).status,'blocked');assert.equal(sends,1);assert.equal(calls[0],'reserve_customer_completion');
 });
+
+test('completion amount uses final settlement total including VAT when supplied',()=>{
+ const m=completionMessage({...site,contract_amount:1400000,settlement_amount:1595000},company,'은행 계좌','2026-11-18');
+ assert.equal(m.variables['#{계약금액}'],'1,595,000원');
+ assert.equal(completionMessage({...site,contract_amount:1400000,settlement_amount:null},company,'은행 계좌','2026-11-18').hasAmount,false);
+});
