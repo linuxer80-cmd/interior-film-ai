@@ -18,7 +18,8 @@ export async function POST(request) {
     const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
     const auth=await db.auth.getUser(token);
     if (auth.error || !auth.data?.user) return reply({error:'로그인을 다시 확인해 주세요.'},401);
-    const form=await request.formData(), siteId=form.get('siteId'), type=form.get('photoType'), photo=form.get('photos');
+    const form=await request.formData(), siteId=form.get('siteId'), type=form.get('photoType'), photo=form.get('photos'), description=form.get('description');
+    if (description!==null && (typeof description!=='string' || description.length>200)) return reply({error:'사진 메모를 확인해 주세요.'},400);
     if (typeof siteId!=='string' || !uuid.test(siteId) || !['request','before','after'].includes(type) || !(photo instanceof File) || !formats[photo.type] || photo.size<1 || photo.size>4*1024*1024) return reply({error:'사진과 현장 정보를 확인해 주세요.'},400);
     const [profile,company,site]=await Promise.all([
       db.from('profiles').select('company_id,role,is_active').eq('id',auth.data.user.id).maybeSingle(),
@@ -30,7 +31,7 @@ export async function POST(request) {
     const path=`sites/${companyId}/${siteId}/${type}/${randomUUID()}.${formats[photo.type]}`;
     const uploaded=await db.storage.from('work-photos').upload(path,Buffer.from(await photo.arrayBuffer()),{contentType:photo.type,upsert:false});
     if (uploaded.error) throw uploaded.error;
-    const saved=await db.from('site_photos').insert({company_id:companyId,site_id:siteId,photo_type:type,storage_path:path,photo_url:null,description:'관리자가 등록한 현장 사진',uploaded_by:auth.data.user.id}).select('id').single();
+    const saved=await db.from('site_photos').insert({company_id:companyId,site_id:siteId,photo_type:type,storage_path:path,photo_url:null,description:description?.trim() || '관리자가 등록한 현장 사진',uploaded_by:auth.data.user.id}).select('id').single();
     if (saved.error) { await db.storage.from('work-photos').remove([path]); throw saved.error; }
     return reply({success:true,site_id:siteId,count:1});
   } catch (error) {

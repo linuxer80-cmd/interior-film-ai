@@ -31,7 +31,7 @@ class BusinessToolsActivity:Activity() {
         super.onCreate(saved)
         if(intent.getStringExtra("filter")=="due")followFilter="due"
         if(uid.isBlank()||company.isBlank()){finish();return}
-        val root=LinearLayout(this).apply { orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener { v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED } }
+        val root=LinearLayout(this).apply { orientation=1;setBackgroundColor(ui.canvas);setOnApplyWindowInsetsListener { v,i->val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout() or android.view.WindowInsets.Type.ime());v.setPadding(a.left,a.top,a.right,a.bottom);android.view.WindowInsets.CONSUMED } }
         window.setDecorFitsSystemWindows(false);window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         root.addView(ui.button("‹ 업무").apply { setOnClickListener { if(!busy)finish() else notice("처리 중입니다. 잠시만 기다려 주세요.") } },LinearLayout.LayoutParams(-1,-2).apply { setMargins(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(8)) })
         progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate=true;visibility=android.view.View.GONE }

@@ -21,6 +21,19 @@ class DailyAssistantTest {
         val site=JSONObject().put("company_id",co).put("id",id).put("status","cancelled").put("work_dates",JSONArray().put("2026-11-05"))
         assertTrue(DailyAssistant.briefing(JSONArray().put(site),co,true,"2026-11-05").sites.isEmpty())
     }
+    @Test fun unloadedReportStatusIsNotTreatedAsKnown() {
+        val site=JSONObject().put("company_id",co).put("id",id).put("status","scheduled").put("work_dates",JSONArray().put("2026-11-05"))
+        val briefing=DailyAssistant.briefing(JSONArray().put(site),co,true,"2026-11-05")
+        assertEquals("unknown",briefing.sites.single().reportStatus)
+        assertTrue(DailyAssistant.highlights(briefing).any { it.contains("보고서 상태를 확인하지 못했습니다") })
+    }
+    @Test fun reportStatusDistinguishesAbsentAndMalformedResponses() {
+        assertEquals("unknown",DailyAssistant.reportStatus(JSONObject()))
+        assertEquals("none",DailyAssistant.reportStatus(JSONObject().put("report",JSONObject.NULL)))
+        assertEquals("unknown",DailyAssistant.reportStatus(JSONObject().put("report","invalid")))
+        assertEquals("unknown",DailyAssistant.reportStatus(JSONObject().put("report",JSONObject())))
+        assertEquals("pending",DailyAssistant.reportStatus(JSONObject().put("report",JSONObject().put("review_status","pending"))))
+    }
     @Test fun timestampsUseKoreanDay() {
         val site=JSONObject().put("company_id",co).put("id",id).put("status","scheduled")
             .put("schedule_start","2026-11-04T15:00:00+00:00").put("schedule_end","2026-11-05T14:59:00+00:00")

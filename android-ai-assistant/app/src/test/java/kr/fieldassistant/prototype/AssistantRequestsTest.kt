@@ -3,7 +3,22 @@ import java.time.LocalDate
 import org.junit.Assert.*
 import org.junit.Test
 class AssistantRequestsTest {
+    @Test fun multipleExplicitFeaturesRequireChoice() {
+        val ids=AssistantRequests.ambiguousFeatures("견적이랑 미수금 보여줘",true).map { it.id }
+        assertTrue(ids.contains("quotes"));assertTrue(ids.contains("receivables"))
+        assertTrue(AssistantRequests.ambiguousFeatures("견적 보여줘",true).size==1)
+        assertTrue(AssistantRequests.ambiguousFeatures("견적이랑 미수금",false).none { it.ownerOnly })
+    }
     private val monday=LocalDate.of(2026,11,2)
+    @Test fun unclearRequestsOfferAtMostThreeAccessibleChoices() {
+        val owner=AssistantRequests.suggestions("미수금 확인하고 싶어요",true)
+        assertTrue(owner.any { it.id=="receivables" })
+        assertTrue(owner.size<=3)
+        assertTrue(AssistantRequests.suggestions("미수금 확인하고 싶어요",false).none { it.ownerOnly })
+        assertTrue(AssistantRequests.suggestions("ㅎ",true).isEmpty())
+        val worker=AssistantRequests.suggestions("필름 재고",false)
+        assertEquals(worker.map { it.id }.distinct().size,worker.size)
+    }
     @Test fun chatRequestsOpenTheNativeViews() {
         assertEquals("team_chat",AssistantRequests.parse("현장 팀 채팅 보여줘",monday).feature)
         assertEquals("customer-chat",AssistantRequests.parse("고객 채팅 보여줘",monday).feature)
