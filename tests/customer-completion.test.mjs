@@ -4,17 +4,17 @@ import {completionMessage,completionConfig} from '../lib/customerCompletion.mjs'
 const company={company_name:'업체',phone:'01012345678'},site={site_name:'현장',customer_name:'고객',customer_phone:'01011112222'};
 test('customer completion includes registered contract amount and company account without subtracting deposit',()=>{
  const m=completionMessage({...site,contract_amount:1200000,deposit_amount:300000},company,'은행 123-456 예금주','2026-10-26');
- assert.equal(m.variables['#{계약금액}'],'1,200,000원');assert.match(m.text,/■ 계약금액: 1,200,000원/);assert.match(m.text,/은행 123-456 예금주/);assert.equal(m.missing.length,0);
+ assert.equal(m.variables['#{최종정산금액}'],'1,200,000원');assert.match(m.text,/■ 최종 정산금액 \(부가세 포함\): 1,200,000원/);assert.match(m.text,/은행 123-456 예금주/);assert.equal(m.missing.length,0);
 });
 test('unknown amount removes the whole amount line; zero remains an explicit contract amount',()=>{
- for(const amount of [null,undefined,'']){const m=completionMessage({...site,contract_amount:amount},company,'은행 계좌','2026-10-26');assert.equal(m.hasAmount,false);assert.ok(!m.text.includes('계약금액'));assert.ok(!Object.hasOwn(m.variables,'#{계약금액}'));}
- assert.match(completionMessage({...site,contract_amount:0},company,'은행 계좌','2026-10-26').text,/계약금액: 0원/);
+ for(const amount of [null,undefined,'']){const m=completionMessage({...site,contract_amount:amount},company,'은행 계좌','2026-10-26');assert.equal(m.hasAmount,false);assert.ok(!m.text.includes('계약금액'));assert.ok(!Object.hasOwn(m.variables,'#{최종정산금액}'));}
+ assert.match(completionMessage({...site,contract_amount:0},company,'은행 계좌','2026-10-26').text,/최종 정산금액 \(부가세 포함\): 0원/);
 });
 test('missing customer name uses site, missing account or recipient blocks send',()=>{
  const m=completionMessage({...site,customer_name:'',customer_phone:''},company,'','2026-10-26');assert.equal(m.variables['#{고객명}'],'현장');assert.ok(m.missing.includes('입금계좌'));assert.ok(m.missing.includes('고객 휴대폰 번호'));
 });
 test('different reviewed templates are required for amount/account variants',()=>{
- const env={SOLAPI_TEMPLATE_CUSTOMER_COMPLETION_AMOUNT:'amount',SOLAPI_TEMPLATE_CUSTOMER_COMPLETION_ACCOUNT:'account',SOLAPI_TEMPLATE_CUSTOMER_SCHEDULE:'schedule'};
+ const env={SOLAPI_TEMPLATE_CUSTOMER_COMPLETION_FINAL_AMOUNT:'amount',SOLAPI_TEMPLATE_CUSTOMER_COMPLETION_ACCOUNT:'account',SOLAPI_TEMPLATE_CUSTOMER_SCHEDULE:'schedule'};
  assert.equal(completionConfig(true,env).templateId,'amount');assert.equal(completionConfig(false,env).templateId,'account');assert.equal(completionConfig(false,{}).templateId,undefined);
 });
 
@@ -30,6 +30,6 @@ test('completion dispatch uses separate reservation and a duplicate never sends 
 
 test('completion amount uses final settlement total including VAT when supplied',()=>{
  const m=completionMessage({...site,contract_amount:1400000,settlement_amount:1595000},company,'은행 계좌','2026-11-18');
- assert.equal(m.variables['#{계약금액}'],'1,595,000원');
+ assert.equal(m.variables['#{최종정산금액}'],'1,595,000원');
  assert.equal(completionMessage({...site,contract_amount:1400000,settlement_amount:null},company,'은행 계좌','2026-11-18').hasAmount,false);
 });

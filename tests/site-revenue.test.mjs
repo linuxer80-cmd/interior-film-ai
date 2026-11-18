@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {resolveRevenue,revenueSourceLabel} from '../lib/siteRevenue.mjs';
-test('contract takes priority over report and is independent of customer type',()=>{
- for(const customer_type of ['personal','business',null])assert.deepEqual(resolveRevenue({contract_amount:1000000,customer_type},{review_status:'approved',approved_amount:1200000}),{revenue:1000000,missingContract:false,revenueSource:'contract'});
+test('approved inspection takes priority over contract and is independent of customer type',()=>{
+ for(const customer_type of ['personal','business',null])assert.deepEqual(resolveRevenue({contract_amount:1000000,customer_type},{review_status:'approved',approved_amount:1200000}),{revenue:1200000,missingContract:false,revenueSource:'approved_report'});
 });
 test('no contract uses only latest administrator-approved report',()=>{
  for(const contract_amount of [null,'',0,'0'])assert.deepEqual(resolveRevenue({contract_amount},{review_status:'approved',approved_amount:1200000}),{revenue:1200000,missingContract:false,revenueSource:'approved_report'});
