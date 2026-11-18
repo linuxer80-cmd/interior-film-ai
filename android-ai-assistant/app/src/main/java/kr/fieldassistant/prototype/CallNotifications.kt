@@ -17,8 +17,11 @@ import org.json.JSONObject
 /** Notification actions never include call content or submit a site in the background. */
 internal object CallNotifications {
     const val DECLINED_PREFIX="notification_declined_"
+    const val DEFERRED_PREFIX="notification_deferred_"
     private const val DECLINE="kr.fieldassistant.prototype.CALL_DECLINE"
+    private const val DEFER="kr.fieldassistant.prototype.CALL_DEFER"
     fun declinedKey(id:String)=DECLINED_PREFIX+BackgroundCalls.key(id)
+    fun deferredKey(id:String)=DEFERRED_PREFIX+BackgroundCalls.key(id)
     private fun identity(uid:String,id:String,action:String)=Uri.Builder().scheme("assistant-call").authority("notification")
         .appendPath(BackgroundCalls.key(uid+"\n"+id)).appendPath(action).build()
     fun build(ctx:Context,uid:String,id:String):Notification {
@@ -28,15 +31,23 @@ internal object CallNotifications {
         val no=Intent(ctx,CallNotificationDeclineReceiver::class.java).setAction(DECLINE).setData(identity(uid,id,"no"))
             .putExtra("assistant_record",id).putExtra("assistant_user",uid)
         val decline=PendingIntent.getBroadcast(ctx,0,no,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val later=Intent(ctx,CallNotificationDeclineReceiver::class.java).setAction(DEFER).setData(identity(uid,id,"later"))
+            .putExtra("assistant_record",id).putExtra("assistant_user",uid)
+        val defer=PendingIntent.getBroadcast(ctx,0,later,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val record=try {
             val saved=JSONArray(ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE).getString("records","[]"))
             (0 until saved.length()).mapNotNull { saved.optJSONObject(it) }.firstOrNull { it.optString("id")==id }
                 ?: BackgroundCalls.resultPrefs(ctx,uid).getString("record_"+BackgroundCalls.key(id),null)?.let { JSONObject(it) }
         } catch(_:Exception) { null }
         val draft=record?.optJSONObject("chat_draft")
-        val detail=listOf("site_name","customer_name","work_description").mapNotNull { key -> draft?.optString(key)?.takeIf { it.isNotBlank() && it!="null" } }.joinToString(" · ").take(140)
-            .ifBlank { record?.optString("name")?.take(100).orEmpty() }
-        val body=listOf(detail,"현장에 등록할까요?").filter { it.isNotBlank() }.joinToString("\n")
+        val name=record?.optString("name").orEmpty()
+        val work=draft?.optString("work_description")?.takeUnless { it.isBlank() || it=="null" } ?: CallDraftHints.work(record?.optString("transcript").orEmpty())
+        val phone=draft?.optString("customer_phone")?.takeUnless { it.isBlank() || it=="null" } ?: CallDraftHints.phone(name)
+        val timestamp=record?.optLong("recorded_at",0L) ?: 0L
+        val time=if(timestamp>0) java.text.SimpleDateFormat("MM월 dd일 HH:mm",java.util.Locale.KOREA).format(java.util.Date(timestamp)) else ""
+        val detail=listOf(draft?.optString("customer_name")?.takeUnless { it.isBlank() || it=="null" }.orEmpty(),phone,work).filter { it.isNotBlank() }.joinToString(" · ").take(140)
+            .ifBlank { name.take(100) }
+        val body=listOf(time,detail,"인식 내용은 확인이 필요합니다. 현장에 등록할까요?").filter { it.isNotBlank() }.joinToString("\n")
         NotificationInbox.record(ctx,uid,"call-$id","call","견적 문의로 보이는 전화가 왔습니다",body,yes,null,id.hashCode() and Int.MAX_VALUE)
         val review=PendingIntent.getActivity(ctx,0,yes,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(ctx,"assistant_results").addExtras(NotificationInbox.owner(uid)).setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -44,10 +55,12 @@ internal object CallNotifications {
             .setContentText(body).setStyle(Notification.BigTextStyle().bigText(body))
             .setVisibility(Notification.VISIBILITY_PRIVATE).setContentIntent(review).setAutoCancel(true)
             .addAction(Notification.Action.Builder(0,"현장 등록",review).build())
+            .addAction(Notification.Action.Builder(0,"나중에",defer).build())
             .addAction(Notification.Action.Builder(0,"등록 안 함",decline).build()).build()
     }
     fun post(ctx:Context,uid:String,id:String) {
-        if(ChatPushRegistration.activeUser(ctx)!=uid || ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE).getBoolean(declinedKey(id),false)) return
+        val prefs=ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE)
+        if(ChatPushRegistration.activeUser(ctx)!=uid || prefs.getBoolean(declinedKey(id),false) || prefs.getBoolean(deferredKey(id),false)) return
         val manager=ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         AssistantNotificationChannels.ensure(manager,"assistant_results","통화 분석 결과",NotificationManager.IMPORTANCE_DEFAULT)
         val notification=build(ctx,uid,id)
@@ -55,7 +68,7 @@ internal object CallNotifications {
         if(!manager.areNotificationsEnabled() || manager.getNotificationChannel("assistant_results")?.importance==NotificationManager.IMPORTANCE_NONE) return
         try { manager.notify(id.hashCode() and Int.MAX_VALUE,notification) } catch(_:SecurityException) { }
     }
-    fun decline(ctx:Context,uid:String,id:String):Boolean = synchronized(BackgroundCalls.lock) {
+    fun decide(ctx:Context,uid:String,id:String,defer:Boolean):Boolean = synchronized(BackgroundCalls.lock) {
         if(uid.isBlank() || id.isBlank() || ChatPushRegistration.activeUser(ctx)!=uid) return@synchronized false
         val prefs=ctx.getSharedPreferences("assistant_user_$uid",Context.MODE_PRIVATE)
         val records=try { JSONArray(prefs.getString("records","[]")) } catch(_:Exception) { return@synchronized false }
@@ -66,18 +79,20 @@ internal object CallNotifications {
         val messages=item.optJSONArray("chat_messages") ?: JSONArray()
         val replies=(0 until messages.length()).mapNotNull { messages.optJSONObject(it) }.filter { it.optBoolean("user") }.map { it.optString("body") }
         if(ConsultationChat.disposition(item.optString("chat_disposition"),replies)!="active") return@synchronized false
-        prefs.edit().putBoolean(declinedKey(id),true).commit()
+        if(prefs.getBoolean(declinedKey(id),false) || prefs.getBoolean(deferredKey(id),false)) return@synchronized false
+        prefs.edit().putBoolean(if(defer) deferredKey(id) else declinedKey(id),true).commit()
     }
-    fun isDeclineIntent(intent:Intent?)=intent?.action==DECLINE
+    fun isDecisionIntent(intent:Intent?)=intent?.action==DECLINE || intent?.action==DEFER
+    fun isDeferIntent(intent:Intent?)=intent?.action==DEFER
 }
 
 /** The explicit, non-exported receiver records only the negative choice. */
 class CallNotificationDeclineReceiver:BroadcastReceiver() {
     override fun onReceive(context:Context,intent:Intent?) {
-        if(!CallNotifications.isDeclineIntent(intent)) return
+        if(!CallNotifications.isDecisionIntent(intent)) return
         val uid=intent?.getStringExtra("assistant_user") ?: return
         val id=intent.getStringExtra("assistant_record") ?: return
-        if(CallNotifications.decline(context,uid,id)) {
+        if(CallNotifications.decide(context,uid,id,CallNotifications.isDeferIntent(intent))) {
             NotificationInbox.markRead(context,uid,"call-$id")
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(id.hashCode() and Int.MAX_VALUE)
         } else Toast.makeText(context,"이 통화의 등록 상태를 앱에서 확인해 주세요.",Toast.LENGTH_LONG).show()

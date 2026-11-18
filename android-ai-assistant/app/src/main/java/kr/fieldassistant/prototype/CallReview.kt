@@ -4,6 +4,11 @@ import java.util.Locale
 
 /** Evidence for a person to review, not an assertion of recognition confidence. */
 internal object CallReview {
+    fun comparableAddress(value:String):String = value.replace(Regex("[\\s,()\\-]"), "").trim()
+    fun similarAddress(left:String,right:String):Boolean {
+        val a=comparableAddress(left);val b=comparableAddress(right)
+        return a.length>=8 && b.length>=8 && (a==b || (minOf(a.length,b.length)>=12 && (a.startsWith(b) || b.startsWith(a))))
+    }
     fun phone(value:String):String = CallPhone.normalize(value)
     fun samePhone(left:String,right:String):Boolean {
         val a=phone(left);return a.isNotEmpty() && a==phone(right)

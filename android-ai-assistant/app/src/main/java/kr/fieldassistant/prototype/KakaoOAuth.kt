@@ -51,8 +51,12 @@ class KakaoCallbackActivity:Activity() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main)
     override fun onCreate(state:Bundle?) {
         super.onCreate(state)
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(32,80,32,32) }
-        val status=TextView(this).apply { text="카카오 로그인 확인 중…";textSize=18f };page.addView(status);setContentView(page)
+        window.setDecorFitsSystemWindows(false)
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setOnApplyWindowInsetsListener { v,i ->
+            val a=i.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout() or android.view.WindowInsets.Type.ime())
+            v.setPadding(a.left+32,a.top+32,a.right+32,a.bottom+32);android.view.WindowInsets.CONSUMED
+        } }
+        val status=TextView(this).apply { text="카카오 로그인 확인 중…";textSize=18f };page.addView(status);setContentView(page);page.requestApplyInsets()
         val payload=try { KakaoOAuth.consume(this,intent.data) } catch(_:Exception) { null }
         intent.data=null
         fun failed() {

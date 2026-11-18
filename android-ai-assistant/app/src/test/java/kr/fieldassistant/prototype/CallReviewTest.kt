@@ -4,6 +4,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CallReviewTest {
+    @Test fun addressWarningsRequireSubstantialMatch() {
+        assertTrue(CallReview.similarAddress("인천 서구 청라대로 123", "인천서구청라대로123"))
+        assertFalse(CallReview.similarAddress("인천 서구", "인천 서구"))
+        assertFalse(CallReview.similarAddress("인천 서구 청라대로 123", "인천 서구 청라대로 124"))
+    }
     @Test fun matchesCompleteNumbersOnly() {
         assertTrue(CallReview.samePhone("010-1234-5678","010 1234 5678"))
         assertFalse(CallReview.samePhone("1234-5678","010-1234-5678"))
