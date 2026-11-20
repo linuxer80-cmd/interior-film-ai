@@ -16,7 +16,7 @@ async function context(request) {
  if(ae)throw ae;if(!admin)throw fail('슈퍼관리자만 이용할 수 있습니다.',403);
  return {db,user:auth.user};
 }
-function check(error){if(!error)return;if(['42P01','PGRST205','42883','PGRST202'].includes(error.code))throw Object.assign(fail('사진 데이터 관리 설정 SQL을 먼저 실행해주세요.',503),{setup:true});if(error.code==='40001')throw fail(error.message,409);if(error.code==='42501')throw fail('슈퍼관리자 권한을 확인해주세요.',403);throw error;}
+function check(error){if(!error)return;if(['42P01','PGRST205','42883','PGRST202'].includes(error.code))throw Object.assign(fail('사진 데이터 관리 설정 SQL을 먼저 실행해주세요.',503),{setup:true});if(['40001','PT409'].includes(error.code))throw fail(error.message,409);if(error.code==='42501')throw fail('슈퍼관리자 권한을 확인해주세요.',403);throw error;}
 function pathFor(photo) {
  let path=photo.storage_path||photo.photo_url||'';
  if(/^https?:/i.test(path)){

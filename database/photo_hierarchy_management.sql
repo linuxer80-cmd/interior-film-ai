@@ -48,7 +48,7 @@ begin
  if not found then raise exception '사진을 찾을 수 없습니다.' using errcode='22023'; end if;
  select * into oldrow from public.photo_case_classifications where photo_id=p_photo for update;
  if coalesce(oldrow.revision,0) is distinct from p_revision then
-  raise exception '다른 작업에서 변경되었습니다. 최신 내용을 다시 불러와주세요.' using errcode='40001';
+  raise exception '다른 작업에서 변경되었습니다. 최신 내용을 다시 불러와주세요.' using errcode='PT409';
  end if;
  if jsonb_typeof(p_body->'targets') is distinct from 'array' then raise exception '대상 목록을 확인해주세요.' using errcode='22023'; end if;
  if p_body->>'status'='reviewed' and jsonb_array_length(p_body->'targets')=0 then raise exception '검토할 대상이 없습니다.' using errcode='22023'; end if;
