@@ -1116,9 +1116,20 @@ class MainActivity : Activity() {
         inboxBadge=inbox
         bar.addView(inbox,LinearLayout.LayoutParams(dp(58),dp(52)))
         bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
-        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
+        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="추가 메뉴 열기";setOnClickListener { showAddMenu() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
         page.addView(bar)
+    }
+    private fun showAddMenu() {
+        val owner=selectedCompany()?.role=="관리자"
+        val labels=if(owner) arrayOf("새 현장 등록", "통화·상담 목록", "비서 홈") else arrayOf("현장 찾기", "통화·상담 목록", "비서 홈")
+        AlertDialog.Builder(this).setTitle("무엇을 할까요?").setItems(labels) { _,which ->
+            when(which) {
+                0 -> if(owner) showNewSiteRegistration() else lookupSites(AssistantRequests.Request("sites"))
+                1 -> showConversationList()
+                2 -> { chatId=null;settingsOpen=false;visibleConversationKey=null;render() }
+            }
+        }.setNegativeButton("닫기",null).show()
     }
     private fun showAssistantMenu() {
         AlertDialog.Builder(this).setTitle("현장 AI 비서")
