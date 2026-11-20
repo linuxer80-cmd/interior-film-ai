@@ -1107,16 +1107,16 @@ class MainActivity : Activity() {
         }.setNegativeButton("닫기",null).show()
     }
     private fun chatHeader(page: LinearLayout) {
-        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.rgb(29,67,50),16) }
-        val menu=TextView(this).apply { text="☰";textSize=24f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
+        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),0,dp(4),0);background=bg(Color.WHITE,18,Color.rgb(226,232,225)) }
+        val menu=TextView(this).apply { text="☰";textSize=22f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="메뉴 열기";setOnClickListener { showAssistantMenu() } }
         bar.addView(menu,LinearLayout.LayoutParams(dp(48),dp(52)))
-        bar.addView(text("현장 AI 비서",19f,true,Color.WHITE),LinearLayout.LayoutParams(0,-2,1f))
-        val web=TextView(this).apply { text="업무";textSize=14f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="앱 안에서 업무 처리";setOnClickListener { showFeatures() } }
-        val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
+        bar.addView(text("필름장이 비서",17f,true,Color.rgb(31,57,43)),LinearLayout.LayoutParams(0,-2,1f))
+        val web=TextView(this).apply { text="업무";textSize=13f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="앱 안에서 업무 처리";setOnClickListener { showFeatures() } }
+        val inbox=TextView(this).apply { text=account?.userId?.let { "알림 ${NotificationInbox.unread(this@MainActivity,it)}" } ?: "알림";textSize=12f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="알림 확인";setOnClickListener { account?.userId?.let { NotificationInbox.show(this@MainActivity,it) { visibleConversationKey=null;render() } } } }
         inboxBadge=inbox
         bar.addView(inbox,LinearLayout.LayoutParams(dp(58),dp(52)))
         bar.addView(web,LinearLayout.LayoutParams(dp(52),dp(52)))
-        val home=TextView(this).apply { text="＋";textSize=26f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
+        val home=TextView(this).apply { text="＋";textSize=25f;gravity=Gravity.CENTER;setTextColor(Color.rgb(35,70,52));contentDescription="비서 홈";setOnClickListener { chatId=null;chatInput="";settingsOpen=false;renderHomeChat() } }
         bar.addView(home,LinearLayout.LayoutParams(dp(48),dp(52)))
         page.addView(bar)
     }
@@ -4566,7 +4566,7 @@ class MainActivity : Activity() {
             item.addView(image,LinearLayout.LayoutParams(dp(22),dp(22)))
             item.addView(text(label,12f,true,Color.rgb(35,65,48)).apply { gravity=Gravity.CENTER;setPadding(0,dp(6),0,0) })
             item.setOnClickListener { action() }
-            quickRow.addView(item,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(10),dp(3),dp(4)) });item.minimumHeight=dp(76)
+            quickRow.addView(item,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(10),dp(3),dp(4)) });item.minimumHeight=dp(68)
         }
         quick(if(isOwner) "현장 등록" else "현장 찾기",android.R.drawable.ic_menu_add) {
             if(isOwner) openNativeFeature("new-site") else lookupSites(AssistantRequests.Request("sites"))
