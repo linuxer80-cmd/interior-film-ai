@@ -11,7 +11,7 @@ internal data class SiteNoticeTarget(val user:String,val company:String,val site
             val site=data["site_id"] ?: return null
             val notice=data["notice_id"] ?: return null
             if(listOf(user,company,site,notice).any { !uuid.matches(it) }) return null
-            return SiteNoticeTarget(user,company,site,notice,if(data["site_action"]=="report") "report" else "detail")
+            return SiteNoticeTarget(user,company,site,notice,data["site_action"]?.takeIf { it in listOf("report", "request_photos") } ?: "detail")
         }
         fun forAccount(target:SiteNoticeTarget?,user:String?,companyIds:Collection<String>):SiteNoticeTarget? =
             target?.takeIf { it.user==user && it.company in companyIds }

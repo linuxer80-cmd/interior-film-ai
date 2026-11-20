@@ -1577,9 +1577,12 @@ class MainActivity : Activity() {
                 if(epoch!=sessionEpoch || account?.userId!=current.userId) return@launch
                 if(!active) { pendingSiteNotice=verified;return@launch }
                 if(site==null) { message("현장 배정이나 접근 권한이 변경되어 확인할 수 없습니다.");return@launch }
-                if(verified.action=="report") {
+                if(verified.action in listOf("report", "request_photos")) {
                     if(!prefs.edit().putString("selected_company",company.id).commit()) { message("업체 선택을 저장하지 못했습니다.");return@launch }
-                    chatId=null;settingsOpen=false;openSiteAction(company.id,verified.site,"report");return@launch
+                    chatId=null;settingsOpen=false
+                    if(verified.action=="request_photos") openSiteAction(company.id,verified.site,"gallery","request")
+                    else openSiteAction(company.id,verified.site,"report")
+                    return@launch
                 }
                 fun value(key:String)=site.optString(key).takeUnless { it.isBlank() || it=="null" }.orEmpty()
                 val address=listOf(value("address"),value("address_detail")).filter { it.isNotBlank() }.joinToString(" ")

@@ -17,6 +17,7 @@ class SiteNoticeTargetTest {
     }
     @Test fun reportRoutingOnlyAcceptsAllowlistedAction() {
         assertEquals("report",SiteNoticeTarget.parse(data+("site_action" to "report"))?.action)
+        assertEquals("request_photos",SiteNoticeTarget.parse(data+("site_action" to "request_photos"))?.action)
         assertEquals("detail",SiteNoticeTarget.parse(data+("site_action" to "delete"))?.action)
     }
     @Test fun targetMustMatchCurrentAccountAndCompany() {

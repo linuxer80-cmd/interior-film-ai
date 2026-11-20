@@ -85,6 +85,9 @@ internal object NotificationInbox {
                 } else {
                     val intent=Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     destinationKeys.forEach { k -> if(route.has(k)) intent.putExtra(k,route.getString(k)) }
+                    // Older saved photo notices contain the site destination but predate the photo action.
+                    if(item.optString("title").endsWith("고객 요청사진 도착") && route.optString("site_notice_action", "detail")=="detail" && route.has("site_notice_site"))
+                        intent.putExtra("site_notice_action", "request_photos")
                     intent.putExtra(USER,user).putExtra(ENTRY,item.optString("key"))
                     try { context.startActivity(intent);markRead(context,user,item.optString("key"));onChanged() }
                     catch(_:Exception) { Toast.makeText(context,"알림을 열지 못했습니다. 다시 시도해 주세요.",Toast.LENGTH_LONG).show() }
